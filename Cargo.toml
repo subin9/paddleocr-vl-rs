@@ -1,0 +1,33 @@
+[package]
+name = "paddleocr-vl-rs"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Python-free Rust document pipeline: PP-DocLayoutV3 layout (ONNX) + region cropping + reading-order assembly + OTSL->markdown, feeding PaddleOCR-VL recognition via mistral.rs."
+repository = "https://github.com/subin9/paddleocr-vl-rs"
+readme = "README.md"
+
+# This crate is the standalone layout + assembly half of the pipeline and builds with no GPU or
+# engine dependencies. The recognition VLM runs through mistral.rs as a separate build (see README
+# and examples/recognize.rs), so its glue is not compiled by this crate.
+autoexamples = false
+
+[lib]
+name = "paddleocr_vl_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "paddleocr-layout"
+path = "src/main.rs"
+
+[dependencies]
+# ort 2.0.0-rc.12 targets the ONNX Runtime 1.24 C-API and is forward-compatible with newer 1.2x
+# runtimes. `load-dynamic` (not `download-binaries`) dlopens the system libonnxruntime.so at
+# runtime, so the build never link-fails against a prebuilt static lib that needs a newer glibc
+# than the host provides. Point ORT_DYLIB_PATH at your libonnxruntime.so (see README).
+ort = { version = "=2.0.0-rc.12", features = ["load-dynamic"] }
+# png-only keeps image decoding lean (page renders and region crops are PNG).
+image = { version = "0.25", default-features = false, features = ["png"] }
+# Parses the recognition stage's results.json (its text fields carry arbitrary VLM output with
+# newline/quote/backslash escaping, so a real JSON parser is required).
+serde_json = "1"

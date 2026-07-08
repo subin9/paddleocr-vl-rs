@@ -1,0 +1,28 @@
+# Rust build
+/target
+**/*.rs.bk
+
+# Model weights and graphs (download separately; see README)
+*.onnx
+*.safetensors
+*.bin
+*.pdparams
+models/
+weights/
+
+# Pipeline outputs and rendered pages
+/out
+out/
+*/results.json
+*/manifest.json
+
+# Layout parity golden (not shipped)
+golden/
+fixtures/
+
+# Local ONNX Runtime shared libs
+libonnxruntime*.so*
+
+# Env / secrets
+.env
+*.env
