@@ -2,17 +2,36 @@
 
 Honest roadmap. Each item lists why it is valuable and what the hard part actually is.
 
-## Skip / placeholder chart+image regions in end2end assembly (measured on §2.2 slice)
+## DONE — Skip visual-only regions in assembly (`VISUAL_ONLY_CLASSES`, measured §2.3-step-1)
 
-**Why:** the assembler OCRs `chart`/`image` crops into markdown text (`src/assemble.rs:22`, known
-shortcut). On the §2.2 5-page slice this transcribed scatter-plot data as long numeric dumps and
-inflated the academic text_block edit distance to 0.995 (near-total mismatch) vs 0.00–0.03 on
-ppt/exam/newspaper. The OmniDocBench reference emits image placeholders that the scorer strips
-(`![](…)`), so
-emitting nothing / a placeholder for chart+image should only help or be neutral for the scored
-metrics. **Hard part:** confirming a chart/image region never carries scoreable text (axis titles,
-captions are separate `figure_caption`/`chart_caption` classes, so likely safe) — measure the delta
-on the §2.3 subset before/after, don't blind-apply.
+Implemented: `assemble_markdown` drops `chart`/`image`/`header_image`/`footer_image`/`seal`. In-session
+A/B on the §2.2 slice moved academic text_block 0.9953→0.0000, table TEDS 0.6883→0.9969, reading_order
+0.1333→0.0000 (overall smoke5 text_block 0.276→0.077). Kept below: the *recognition* and *formula*
+follow-ups it exposed.
+
+## Skip RECOGNITION of visual-only crops (speed, not accuracy)
+
+**Why:** the assembly-side skip above drops the junk from the *output*, but `paddleocr_vl_recognize`
+still runs the VLM on every `chart`/`image`/`seal` crop first — wasted GPU time (charts especially
+emit hundreds of tokens). The layout stage already knows the class in `manifest.json`, so recognition
+could skip the same `VISUAL_ONLY_CLASSES`. **Hard part:** it lives in the mistral.rs example
+(`paddleocr_vl_recognize`), not this crate; keep the `results.json` contract intact (emit the region
+with empty text, or omit it) so `assemble` behavior is unchanged. Fold into the §2.4 load-once mode.
+
+## book text_block 0.339 — standalone `inline_formula` wrapped as display `\[…\]`
+
+**Why:** the one non-chart residual on the smoke5 slice. A standalone `inline_formula` region is
+recognized and emitted wrapped in display delimiters `\[…\]`; the GT expects it inline, so the scorer
+mismatches the block. **Hard part:** deciding wrapping by class is easy (`inline_formula` → `\(…\)`),
+but confirming it doesn't regress the display-formula metric needs a before/after on a subset with
+both kinds — measure, don't blind-apply.
+
+## table Edit_dist 0.434 vs TEDS 0.997 gap
+
+**Why:** the academic tables score near-perfect on TEDS (structure+content tree edit) but 0.43 on the
+raw table Edit_dist. TEDS is OmniDocBench's headline table metric, so this is low-priority, but the
+gap is worth understanding before the full run (likely OTSL→pipe cell-text normalization differences).
+**Hard part:** diagnostic only — compare normalized GT vs pred table strings on the 2 academic tables.
 
 ## Load-once page-iterating recognize mode (before the full 1651-page run)
 

@@ -39,12 +39,27 @@ pub fn crop_region(img: &RgbImage, bbox: &[f32; 4]) -> RgbImage {
     image::imageops::crop_imm(img, x, y, w, h).to_image()
 }
 
+/// Graphics-only layout classes: pure images/charts/seals with no counterpart in any OmniDocBench
+/// text/table/formula GT category. Recognizing them (`OCR:` / `Chart Recognition:`) yields junk --
+/// a photo OCR's to gibberish, a chart to a long `col | val` numeric dump -- and that junk pollutes
+/// the scored markdown, so we drop it from assembly. Measured, in-session A/B on the §2.2 smoke5
+/// slice (assemble the SAME results.json with vs without this skip, score both back-to-back with the
+/// official scorer): dropping `chart` on the academic page moves text_block edit 0.9953 -> 0.0000,
+/// table TEDS 0.6883 -> 0.9969, reading_order 0.1333 -> 0.0000 (the chart's pipe-rows were being
+/// parsed as a table AND as text). Non-chart pages are unaffected. `image`/`header_image`/
+/// `footer_image`/`seal` share the identical mechanism (visual-only, unmatched pred -> pollution).
+const VISUAL_ONLY_CLASSES: [&str; 5] = ["chart", "image", "header_image", "footer_image", "seal"];
+
 /// Reassemble `(class, recognized_text)` blocks (already in reading order) into one markdown doc.
-/// Title classes get heading prefixes; table/formula/chart text is emitted verbatim (it is already
-/// markup/LaTeX). Empty results are skipped. Blocks are separated by a blank line.
+/// Title classes get heading prefixes; table/formula text is emitted verbatim (it is already
+/// markup/LaTeX). Empty results and [`VISUAL_ONLY_CLASSES`] are skipped. Blocks are separated by a
+/// blank line.
 pub fn assemble_markdown(blocks: &[(String, String)]) -> String {
     let mut out = Vec::new();
     for (class, text) in blocks {
+        if VISUAL_ONLY_CLASSES.contains(&class.as_str()) {
+            continue;
+        }
         let text = text.trim();
         if text.is_empty() {
             continue;
@@ -186,6 +201,21 @@ mod tests {
         assert_eq!(doc, "| A | B |\n| --- | --- |");
         // non-OTSL text falls back unchanged (never panics / eats content).
         assert_eq!(otsl_to_markdown("plain text"), "plain text");
+    }
+
+    #[test]
+    fn visual_only_classes_are_dropped() {
+        // Graphics-only regions OCR to junk; they must not reach the scored markdown, but real
+        // text/table blocks around them survive in order. (See VISUAL_ONLY_CLASSES: measured to
+        // move the academic smoke5 page text_block 0.9953 -> 0.0000.)
+        let blocks = vec![
+            ("text".to_string(), "before".to_string()),
+            ("chart".to_string(), "col A | col B\n1 | 2\n3 | 4".to_string()),
+            ("image".to_string(), "logo gibberish".to_string()),
+            ("seal".to_string(), "OFFICIAL STAMP".to_string()),
+            ("text".to_string(), "after".to_string()),
+        ];
+        assert_eq!(assemble_markdown(&blocks), "before\n\nafter");
     }
 
     #[test]

@@ -251,32 +251,51 @@ stratified subset and full run.
 - **Formulas:** the VL model *itself* emits `\[…\]` / `\(…\)` delimiters; `assemble` passes them
   through verbatim; the scorer's `display_reg`/`inline_reg` catch them. Aligned — no fix. (Earlier
   worry that formulas were unwrapped was wrong; the model wraps them.)
-- **Figure/chart regions get OCR'd into text (known shortcut, `src/assemble.rs:22`).** Chart crops
-  (scatter plots) transcribe as long numeric dumps that pollute the text_block edit distance:
-  per-source text_block edit = academic **0.995** (near-total mismatch, 2 charts dumped) vs PPT 0.00,
-  exam 0.01, newspaper 0.03. (book = 0.34 — a *separate* nuance: standalone `inline_formula` regions
-  come back wrapped as display `\[…\]`, a minor dialect mismatch, not chart pollution.) The reference
-  emits image placeholders (the scorer strips `![](…)`); we should skip/placeholder `chart`/`image`
-  regions. **Deferred to §2.3 subset diagnosis** so the fix is measured, not guessed.
+- **Figure/chart regions OCR to junk → FIXED (`VISUAL_ONLY_CLASSES` skip in `src/assemble.rs`).**
+  Chart crops (scatter plots) transcribe as long `col | val` numeric dumps. Measured effect, in-session
+  A/B (assemble the SAME `results.json` with vs without the skip, score both back-to-back — isolates the
+  one code change; only the academic page has charts, so only it moves):
 
-**5-page raw scores (official scorer, quick_match; edit dist ↓ lower better, TEDS ↑ higher better):**
+  | metric (academic page) | no-skip | **skip** |
+  |---|---|---|
+  | text_block Edit_dist | 0.9953 | **0.0000** |
+  | table TEDS | 0.6883 | **0.9969** |
+  | reading_order Edit_dist | 0.1333 | **0.0000** |
 
-| metric | ALL_page_avg | edit_whole | edit_sample_avg | note |
-|--------|--------------|------------|-----------------|------|
-| text_block Edit_dist | 0.276 | 0.180 | 0.109 | ALL inflated by 1 academic pg (figure dumps) |
-| display_formula Edit_dist | 0.110 | 0.112 | 0.110 | formulas extracted correctly |
-| table Edit_dist | 0.568 | 0.689 | 0.577 | 2 tables (academic); TEDS below |
-| table TEDS / TEDS-structure | 0.766 / 0.767 | — | — | n=2 tables only |
-| reading_order Edit_dist | 0.133 | 0.057 | 0.133 | — |
+  The chart's pipe-formatted rows were being parsed by the scorer both as a *table* (wrecking TEDS)
+  and as *text* (wrecking text_block + reading order). Dropping `chart`/`image`/`seal`/`*_image` (all
+  visual-only, no GT text/table/formula counterpart) fixes it. Overall smoke5 text_block 0.276 → 0.077.
+  (The reference emits image placeholders the scorer strips; a skip is equivalent for scoring.)
+  Recognition still *runs* on these crops today; skipping that too is a later speed win (§2.4/2.5).
+- **book text_block 0.339 (remaining, separate nuance):** standalone `inline_formula` regions come
+  back wrapped as display `\[…\]` — a minor dialect mismatch, not chart pollution. Tracked in FUTURE_WORK.
 
-Numbers are sane and non-degenerate (not 1.0 = total-miss, not a suspicious 0.0): the scorer matched
-our predictions to GT and produced real per-metric values. That is all this slice was meant to prove.
+**METHODOLOGY GOTCHA (recorded so it doesn't bite the subset/full run):** `pdf_validation.py` names
+its output `result/<basename(prediction_dir)>_<match_method>_metric_result.json` (`pdf_validation.py:47`),
+NOT a fixed name. The pinned eval repo also ships a committed *demo-reference* `end2end_quick_match_*`
+in `result/`. Reading the wrong file silently compares against the demo, not your run — always read the
+file named after YOUR prediction dir (here `smoke5_quick_match_metric_result.json`).
+
+**5-page raw scores (official scorer, quick_match, WITH visual-skip; edit ↓ lower better, TEDS ↑ higher):**
+
+| metric | ALL_page_avg | edit_sample_avg | note |
+|--------|--------------|-----------------|------|
+| text_block Edit_dist | 0.077 | 0.024 | per-source: academic 0.00 / PPT 0.00 / exam 0.01 / newspaper 0.03 / book 0.34 |
+| display_formula Edit_dist | 0.110 | 0.110 | formulas extracted correctly (unchanged by skip) |
+| table Edit_dist | 0.434 | — | 2 tables (academic); strict, TEDS is the headline |
+| table TEDS / TEDS-structure | 0.997 / — | — | n=2 tables only |
+| reading_order Edit_dist | 0.000 | — | — |
+
+**Reproducibility confirmed:** the pipeline (layout+recognize) is deterministic (re-ran newspaper page:
+0/17 regions differ, manifest identical) and the scorer is deterministic (2× identical). Iter-5's
+committed no-skip numbers reproduce byte-for-byte in-session. Numbers are sane and non-degenerate.
+This slice proves the integration AND the visual-skip fix; it is NOT the accuracy verdict (n=5).
 
 ## Our measured scores — PENDING
 
 | run | Overall | Text-Edit | Formula-CDM | Table-TEDS | ReadOrder-Edit | verdict |
 |-----|---------|-----------|-------------|------------|----------------|---------|
-| 5-page plumbing slice | n/a (n=5) | 0.276 pg-avg | n/a (edit 0.110; no CDM env) | 0.766 (n=2) | 0.133 | plumbing OK |
+| 5-page slice (visual-skip) | n/a (n=5) | 0.077 pg-avg | n/a (edit 0.110; no CDM env) | 0.997 (n=2) | 0.000 | plumbing + skip OK |
 | stratified subset (~100–200) | PENDING | PENDING | PENDING | PENDING | PENDING | — |
 | full v1.5 (1651) | PENDING | PENDING | PENDING | PENDING | PENDING | — |
 

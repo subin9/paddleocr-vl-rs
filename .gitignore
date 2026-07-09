@@ -33,6 +33,7 @@ logs/
 bench/OmniDocBench/
 bench/omnidocbench/data/
 bench/omnidocbench/preds/
+bench/omnidocbench/work/
 bench/omnidocbench/*.parquet
 bench/omnidocbench/scorer-venv/
 **/OmniDocBench_*/
