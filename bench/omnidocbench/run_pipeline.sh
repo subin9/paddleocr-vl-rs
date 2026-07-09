@@ -43,7 +43,18 @@ while IFS= read -r img; do
   echo "[$n] stage1 layout"
   "$LAYOUT_BIN" "$src" "$page_dir"
   echo "[$n] stage2 recognize (GPU=$PADDLEOCR_VL_GPU)"
-  "$RECOGNIZE_BIN" "$page_dir"
+  # The recognize binary writes results.json ONCE after all crops are done, then can
+  # segfault on CUDA/mistral.rs teardown (exit 139) -- a cosmetic crash AFTER the output
+  # is already on disk. Trust the output file, not the exit code: proceed iff results.json
+  # has one entry per manifest task. A genuine mid-recognition failure (missing/short/
+  # truncated results.json) skips just this one page instead of aborting the whole run.
+  # ponytail: skip-on-failure, no retry -- add a single retry if real (pre-write) crashes appear.
+  rc=0; "$RECOGNIZE_BIN" "$page_dir" || rc=$?
+  if ! python3 -c "import json,sys; m=json.load(open('$page_dir/manifest.json')); r=json.load(open('$page_dir/results.json')); sys.exit(0 if len(m)>0 and len(r)==len(m) else 1)" 2>/dev/null; then
+    echo "[$n] RECOGNIZE FAILED (rc=$rc, results.json missing/incomplete) -> skip page" >&2
+    continue
+  fi
+  [ "$rc" -ne 0 ] && echo "[$n] note: recognize exited $rc but results.json complete (teardown crash tolerated)"
   echo "[$n] stage3 assemble"
   "$LAYOUT_BIN" assemble "$page_dir/results.json" > "$out_md"
   t1=$(date +%s)
