@@ -129,20 +129,69 @@ Token-for-token greedy parity vs the transformers-5.13 reference across a 9-item
 **both** CPU-f32 and GPU-bf16. 9/9 match golden token ids; bf16 rounding never flipped a greedy
 argmax on this corpus. See the repo's parity harness.
 
-## Planned: OmniDocBench accuracy-preservation run (TODO -- no numbers yet)
+# OmniDocBench v1.5 accuracy-preservation run
 
-The 9-item corpus proves parity but is not a standard benchmark. The planned evaluation:
+The 9-item corpus proves token parity but is not a standard benchmark. This section tracks a full
+OmniDocBench v1.5 run scored with the **official** evaluation code. Our own measured numbers are
+`PENDING` until the runs land; nothing here is fabricated or extrapolated.
 
-- Full **OmniDocBench v1.5**, official scoring script, on the same box.
-- Compare mistral.rs (this port) vs HF/transformers vs vLLM serving the same PaddleOCR-VL checkpoint.
-- **Framing (honest, to be preserved when numbers land):** the primary result is
-  **accuracy-preservation** -- the port should match the reference's document-parsing scores, since
-  it is token-for-token faithful. The port's edge is **deployment** (a single self-contained Rust
-  binary, no Python/Paddle runtime), NOT serving throughput. Any speed comparison is same-hardware
-  and explicitly not a SOTA-speed claim.
+**Framing (honest, held fixed as numbers land):** the primary result is **accuracy-preservation** --
+the port is token-for-token faithful to transformers on the 9-item corpus, so on OmniDocBench it
+should reproduce the reference's document-parsing scores within noise. A *divergence* would be a real
+and valuable finding (report the failing doc types, don't hide it). The port's edge is **deployment**
+(a single self-contained Rust binary, no Python/Paddle runtime), **not** serving throughput; any
+speed comparison is same-box and explicitly not a SOTA-speed claim.
 
-This section is a plan. It intentionally contains no fabricated numbers; it will be filled in when
-the run is done.
+## Methodology (recon — recorded before any run)
+
+**Benchmark.** OmniDocBench — [opendatalab/OmniDocBench](https://github.com/opendatalab/OmniDocBench)
+(CVPR 2025). Code license **Apache-2.0**. v1.5 = 1,355 document pages (+374 over v1.0), bilingual
+zh/en, 9 document types (academic papers, textbooks, financial reports, exam papers, ...).
+
+- **Eval-code pin:** branch `v1_5` @ `59b103c4b47d3a01fada83491585d6512a40c0bc` (2026-04-10). `main`
+  @ `2b161d0` (2026-06-26) is the moving tip; we pin the explicit `v1_5` branch for reproducibility.
+- **Dataset:** [huggingface.co/datasets/opendatalab/OmniDocBench](https://huggingface.co/datasets/opendatalab/OmniDocBench)
+  / [opendatalab.com/OpenDataLab/OmniDocBench](https://opendatalab.com/OpenDataLab/OmniDocBench).
+  **License/terms: research use only, non-commercial.** → dataset pages are **gitignored, never
+  committed**; only our scripts/configs and result JSON/markdown are committed.
+- **Metrics (v1.5):** Text = normalized **Edit distance** (also BLEU/METEOR); Tables = **TEDS**
+  (+ TEDS-S structure-only); Formulas = **CDM** (Character Detection Matching via LaTeX render +
+  image compare); Reading order = **Edit distance**. v1.5 uses hybrid text/formula matching.
+- **Overall formula (official):** `Overall = ((1 − text_Edit) × 100 + table_TEDS + formula_CDM) / 3`.
+- **Scorer invocation:** `python pdf_validation.py --config configs/end2end.yaml`; prediction path
+  is a **folder of per-page markdown files**, one `.md` per image (filename = image name with the
+  extension swapped to `.md`). GT + prediction paths set in the end2end config. Our assembler already
+  emits per-region reading-order markdown, so the conversion is "one `.md` per page image" — the
+  integration risk (verified on the 5-page slice, not assumed) is table/formula markdown dialect.
+
+## Reference score (verified, primary source)
+
+**PaddleOCR-VL-1.5 (0.9B)** on OmniDocBench v1.5, from the paper
+[*PaddleOCR-VL-1.5: Towards a Multi-Task 0.9B VLM ...*](https://arxiv.org/abs/2601.21957) (arxiv
+2601.21957v1, Table 2). Not quoted from memory; cross-checked against the official overall formula.
+
+| model | Overall | Text-Edit ↓ | Formula-CDM ↑ | Table-TEDS ↑ | Table-TEDS-S ↑ | ReadOrder-Edit ↓ |
+|-------|---------|-------------|---------------|--------------|----------------|------------------|
+| **PaddleOCR-VL-1.5** | **94.50** | 0.035 | 94.21 | 92.76 | 95.79 | 0.042 |
+| PaddleOCR-VL (v1.0)  | 92.86 | 0.035 | 91.22 | 90.89 | 94.76 | 0.043 |
+
+Consistency check: `((1 − 0.035) × 100 + 92.76 + 94.21) / 3 = 94.49 ≈ 94.50` ✓ — the reported
+overall and the formula agree, so the pinned numbers are self-consistent.
+
+**This is the target the Rust port must land within noise of.** PRESERVED = overall within scorer
+noise of 94.50 (noise band to be quantified from the subset run); DIVERGES = otherwise, reported
+with the per-doc-type breakdown.
+
+## Our measured scores — PENDING
+
+| run | Overall | Text-Edit | Formula-CDM | Table-TEDS | ReadOrder-Edit | verdict |
+|-----|---------|-----------|-------------|------------|----------------|---------|
+| 5-page plumbing slice | PENDING | PENDING | PENDING | PENDING | PENDING | — |
+| stratified subset (~100–200) | PENDING | PENDING | PENDING | PENDING | PENDING | — |
+| full v1.5 (1,355) | PENDING | PENDING | PENDING | PENDING | PENDING | — |
+
+Speed table (secondary; Rust GPU-bf16 vs transformers floor, per-stage) also PENDING — see the
+existing latency sections above for the single-crop microbenchmarks already measured.
 
 ## Caveats
 

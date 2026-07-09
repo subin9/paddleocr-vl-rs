@@ -26,3 +26,12 @@ libonnxruntime*.so*
 # Env / secrets
 .env
 *.env
+logs/
+
+# OmniDocBench (research-only dataset + cloned eval repo — never commit)
+# Our repro scripts/configs/results live in bench/omnidocbench/ and ARE committed.
+bench/OmniDocBench/
+bench/omnidocbench/data/
+bench/omnidocbench/preds/
+bench/omnidocbench/*.parquet
+**/OmniDocBench_*/
