@@ -145,8 +145,19 @@ speed comparison is same-box and explicitly not a SOTA-speed claim.
 ## Methodology (recon — recorded before any run)
 
 **Benchmark.** OmniDocBench — [opendatalab/OmniDocBench](https://github.com/opendatalab/OmniDocBench)
-(CVPR 2025). Code license **Apache-2.0**. v1.5 = 1,355 document pages (+374 over v1.0), bilingual
-zh/en, 9 document types (academic papers, textbooks, financial reports, exam papers, ...).
+(CVPR 2025). Code license **Apache-2.0**. Bilingual zh/en, 9 document types (academic papers,
+textbooks, financial reports, exam papers, ...).
+
+- **Actual page count (measured, not from prose): 1651 pages.** The pinned GT JSON at dataset rev
+  `aa1ee96` (`OmniDocBench.json`) contains **1651** entries — that is what the scorer iterates, so
+  it is the real denominator. The eval README's prose still says "1355 PDF pages" (v1.0 981 + 374
+  new), which is **stale**; the shipped v1.5 dataset is larger. We report against the 1651 we
+  actually score and flag the discrepancy rather than trusting the README number.
+- **Strata (from the GT `page_attribute`, for the stratified subset):** language — simplified_chinese
+  765, english 755, en_ch_mixed 116, traditional_chinese 13, other 2. layout — single_column 887,
+  other_layout 372, double_column 184, 1andmore_column 155, three_column 53. data_source (9 types) —
+  book 276, PPT2PDF 253, academic_literature 215, exam_paper 193, colorful_textbook 159, newspaper
+  151, magazine 149, research_report 132, note 118, historical_document 5.
 
 - **Eval-code pin:** branch `v1_5` @ `59b103c4b47d3a01fada83491585d6512a40c0bc` (2026-04-10). `main`
   @ `2b161d0` (2026-06-26) is the moving tip; we pin the explicit `v1_5` branch for reproducibility.
@@ -159,10 +170,29 @@ zh/en, 9 document types (academic papers, textbooks, financial reports, exam pap
   image compare); Reading order = **Edit distance**. v1.5 uses hybrid text/formula matching.
 - **Overall formula (official):** `Overall = ((1 − text_Edit) × 100 + table_TEDS + formula_CDM) / 3`.
 - **Scorer invocation:** `python pdf_validation.py --config configs/end2end.yaml`; prediction path
-  is a **folder of per-page markdown files**, one `.md` per image (filename = image name with the
-  extension swapped to `.md`). GT + prediction paths set in the end2end config. Our assembler already
-  emits per-region reading-order markdown, so the conversion is "one `.md` per page image" — the
-  integration risk (verified on the 5-page slice, not assumed) is table/formula markdown dialect.
+  is a **folder of per-page markdown files**, one `.md` per image. GT + prediction paths set in the
+  end2end config. Our assembler already emits per-region reading-order markdown, so the conversion is
+  "one `.md` per page image" — the integration risk (verified on the 5-page slice, not assumed) is
+  table/formula markdown dialect.
+- **Exact filename mapping (verified from `dataset/end2end_dataset.py:162-174` @ pin 59b103c):** for
+  each GT page, `img_name = basename(page_info.image_path)` (e.g. `foo.pdf_7.jpg`); the scorer looks
+  for `<pred_folder>/<img_name[:-4]>.md` — i.e. **strip the 4-char image extension, append `.md`**
+  (`foo.pdf_7.jpg` → `foo.pdf_7.md`). Fallbacks it also tries: `.mmd` and `.pdf`-stripped `.md`
+  (nougat/marker) and `img_name + '.md'` (mineru). A **missing** prediction prints
+  `!!!WARNING: No prediction for <img>` and **skips** that page (contributes nothing) — so a crashed
+  page silently drops from the denominator; our runner must guarantee one `.md` per GT image.
+- **GT schema:** GT is a single JSON list; each element = `{layout_dets[], extra, page_info}`.
+  `page_info` has `image_path`, `height`, `width`, `page_no`, and `page_attribute`
+  (`data_source`, `language` en/zh, `layout`, `special_issue[]`) — the strata for the subset. Each
+  `layout_dets[]` entry has `category_type`, `poly`, `order`, `text`, `ignore`, `attribute`. The
+  scorer parses our full-page `.md` into text/formula/table blocks and matches them to `layout_dets`
+  via `match_method: quick_match`.
+- **Scorer runs in its own venv (isolation risk).** `requirements.txt` pins an old, conflicting
+  stack (numpy 1.24.4, pandas 2.0.3, scikit-learn 1.1.2, plus `apted`, `Levenshtein`, `mmeval`,
+  `pylatexenc`, `func-timeout`) — incompatible with the inference venv's torch 2.12 / numpy 2.x.
+  The scorer is pure-CPU post-processing, so it gets a **separate** venv; it never shares the
+  inference env. (CDM formula metric needs an extra env; `CDM_plain` in the config exports the CDM
+  input JSON without it — decide at subset time whether to stand up full CDM or accept `CDM_plain`.)
 
 ## Reference score (verified, primary source)
 
