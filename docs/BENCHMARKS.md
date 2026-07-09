@@ -219,6 +219,11 @@ textbooks, financial reports, exam papers, ...).
 Consistency check: `((1 − 0.035) × 100 + 92.76 + 94.21) / 3 = 94.49 ≈ 94.50` ✓ — the reported
 overall and the formula agree, so the pinned numbers are self-consistent.
 
+Re-verified 2026-07-09 against the arxiv abstract (primary source, not this doc): it states verbatim
+"a new state-of-the-art (SOTA) accuracy of **94.5%** on OmniDocBench v1.5" — the headline Overall
+matches. Per-metric Table-2 values (Text-Edit/CDM/TEDS) are consistent with 94.5 via the formula
+above; they live in the PDF Table 2, not the abstract, so they rest on that consistency check.
+
 **This is the target the Rust port must land within noise of.** PRESERVED = overall within scorer
 noise of 94.50 (noise band to be quantified from the subset run); DIVERGES = otherwise, reported
 with the per-doc-type breakdown.
