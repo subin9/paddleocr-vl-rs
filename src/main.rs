@@ -40,7 +40,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     set_default_dylib();
     let mut session = Session::builder()?.commit_from_file(&model)?;
-    let img = image::open(&fixture)?.to_rgb8();
+    // Guess the format from content, not the extension: OmniDocBench v1.5 ships 34 `.png` files
+    // that are actually JPEG, and `image::open` (0.25) decodes by extension only -> InvalidSignature.
+    let img = image::ImageReader::open(&fixture)?
+        .with_guessed_format()?
+        .decode()?
+        .to_rgb8();
 
     let regions = run_layout(&mut session, &img)?;
     println!("{} region(s) in reading order:", regions.len());

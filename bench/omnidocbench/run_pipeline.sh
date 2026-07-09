@@ -41,7 +41,12 @@ while IFS= read -r img; do
   t0=$(date +%s)
   echo "[$n] == $stem =="
   echo "[$n] stage1 layout"
-  "$LAYOUT_BIN" "$src" "$page_dir"
+  # Fault-isolate the page like stage2 does: a layout failure (unsupported/corrupt image) skips
+  # just this page instead of aborting the whole run under `set -e`.
+  if ! "$LAYOUT_BIN" "$src" "$page_dir"; then
+    echo "[$n] LAYOUT FAILED -> skip page" >&2
+    continue
+  fi
   echo "[$n] stage2 recognize (GPU=$PADDLEOCR_VL_GPU)"
   # The recognize binary writes results.json ONCE after all crops are done, then can
   # segfault on CUDA/mistral.rs teardown (exit 139) -- a cosmetic crash AFTER the output
