@@ -34,4 +34,5 @@ bench/OmniDocBench/
 bench/omnidocbench/data/
 bench/omnidocbench/preds/
 bench/omnidocbench/*.parquet
+bench/omnidocbench/scorer-venv/
 **/OmniDocBench_*/

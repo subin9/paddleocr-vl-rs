@@ -193,6 +193,17 @@ textbooks, financial reports, exam papers, ...).
   The scorer is pure-CPU post-processing, so it gets a **separate** venv; it never shares the
   inference env. (CDM formula metric needs an extra env; `CDM_plain` in the config exports the CDM
   input JSON without it — decide at subset time whether to stand up full CDM or accept `CDM_plain`.)
+- **Scorer venv stood up + smoke-tested (PASSED).** `bench/omnidocbench/setup_scorer_venv.sh` builds
+  an isolated **Python 3.10** venv via `uv` from the pinned `requirements.txt` (py3.10 chosen because
+  the old pins have cp310 manylinux wheels — no source builds; installed clean). Ran the scorer
+  unchanged on its shipped 18-page demo (`pdf_validation.py -c configs/end2end.yaml`, GT + preds both
+  from `demo_data/`): **exit 0**, all four metric families computed and written to `result/*.json` —
+  text_block Edit_dist (ALL_page_avg 0.351), display_formula Edit_dist (0.319) + `CDM_plain` export
+  (writes `..._display_formula_formula.json`, the CDM-input JSON, **without** needing the CDM render
+  env), table TEDS (0.926) + TEDS-S (0.915), reading_order Edit_dist (0.161). These demo numbers are
+  a mixed sample, **not** PaddleOCR-VL output — the point is only that the scorer stack runs
+  end-to-end and emits a score before we feed it our predictions. Scorer install is now de-risked
+  independently of our output conversion.
 
 ## Reference score (verified, primary source)
 
@@ -218,7 +229,7 @@ with the per-doc-type breakdown.
 |-----|---------|-----------|-------------|------------|----------------|---------|
 | 5-page plumbing slice | PENDING | PENDING | PENDING | PENDING | PENDING | — |
 | stratified subset (~100–200) | PENDING | PENDING | PENDING | PENDING | PENDING | — |
-| full v1.5 (1,355) | PENDING | PENDING | PENDING | PENDING | PENDING | — |
+| full v1.5 (1651) | PENDING | PENDING | PENDING | PENDING | PENDING | — |
 
 Speed table (secondary; Rust GPU-bf16 vs transformers floor, per-stage) also PENDING — see the
 existing latency sections above for the single-crop microbenchmarks already measured.
