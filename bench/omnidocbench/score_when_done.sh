@@ -1,35 +1,39 @@
 #!/usr/bin/env bash
-# Wait for the subset150 pipeline runner to finish, then score with the official
-# OmniDocBench scorer. Idempotent: safe to re-run; only scores a COMPLETE 150/150 set.
+# Wait for an OmniDocBench pipeline runner to finish, then score with the official
+# scorer. Idempotent: safe to re-run; only scores a COMPLETE set (>= THRESHOLD preds).
 # Never relaunches the pipeline. Refuses to score a partial/incomplete run.
+# Args (all optional, defaults = subset150 for back-compat):
+#   $1 RUNNER_PID  $2 PREDS_DIR  $3 CFG  $4 THRESHOLD  $5 LOG
 set -u
 cd "$(dirname "$0")/.."                      # -> bench/
 RUNNER_PID="${1:-258369}"
-PREDS=omnidocbench/preds/subset150
-CFG=omnidocbench/data/subsets/subset150.end2end.yaml
-LOG=omnidocbench/logs/score-subset150.log
+PREDS="${2:-omnidocbench/preds/subset150}"
+CFG="${3:-omnidocbench/data/subsets/subset150.end2end.yaml}"
+THRESHOLD="${4:-150}"
+LOG="${5:-omnidocbench/logs/score-subset150.log}"
 : > "$LOG"
 
 log(){ echo "$(date '+%H:%M:%S') $*" | tee -a "$LOG"; }
 
-# Wait for runner to exit (cap ~40 min so we never hang the loop forever).
-for _ in $(seq 1 120); do
+# Wait for runner to exit. SLEEP=30, ITERS=1600 -> ~13.3h cap (covers the 6-8h full
+# run; subset breaks early when the runner dies). Never hang the loop forever.
+for _ in $(seq 1 1600); do
   kill -0 "$RUNNER_PID" 2>/dev/null || break
-  sleep 20
+  sleep 30
 done
 
 CNT=$(ls $PREDS/*.md 2>/dev/null | wc -l)
 if kill -0 "$RUNNER_PID" 2>/dev/null; then
-  log "TIMEOUT: runner $RUNNER_PID still alive after ~40min; pred=$CNT/150; NOT scoring"; exit 2
+  log "TIMEOUT: runner $RUNNER_PID still alive after cap; pred=$CNT/$THRESHOLD; NOT scoring"; exit 2
 fi
-log "runner $RUNNER_PID exited; pred count=$CNT/150"
-if [ "$CNT" -lt 150 ]; then
-  log "INCOMPLETE: $CNT/150 preds after runner exit; NOT scoring a partial set"; exit 3
+log "runner $RUNNER_PID exited; pred count=$CNT/$THRESHOLD"
+if [ "$CNT" -lt "$THRESHOLD" ]; then
+  log "INCOMPLETE: $CNT/$THRESHOLD preds after runner exit; NOT scoring a partial set"; exit 3
 fi
 
 log "scoring: pdf_validation.py -c $CFG"
 cd OmniDocBench
 ../omnidocbench/scorer-venv/bin/python pdf_validation.py -c "../$CFG" 2>&1 | tee -a "../$LOG"
 rc=${PIPESTATUS[0]}
-log "SCORER_EXIT=$rc  result=bench/OmniDocBench/result/subset150_quick_match_metric_result.json"
+log "SCORER_EXIT=$rc  results under bench/OmniDocBench/result/ (prefix = preds basename '$(basename "$PREDS")')"
 exit "$rc"
