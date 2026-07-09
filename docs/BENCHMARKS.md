@@ -223,11 +223,60 @@ overall and the formula agree, so the pinned numbers are self-consistent.
 noise of 94.50 (noise band to be quantified from the subset run); DIVERGES = otherwise, reported
 with the per-doc-type breakdown.
 
+## Plumbing validation (§2.2, n=5) — integration proven, NOT an accuracy verdict
+
+The 5-page slice exists to de-risk the *integration* (our markdown → the official scorer's input),
+not to measure accuracy. **Do not read these numbers as the reference comparison** — n=5,
+hand-picked English pages, one deliberately hard academic double-column. The verdict comes from the
+stratified subset and full run.
+
+**How our output is fed to the scorer (the contract):**
+- Pipeline per page: `paddleocr-layout <img> <dir>` (layout → crops + `manifest.json`) →
+  `paddleocr_vl_recognize <dir>` (PaddleOCR-VL bf16 on GPU → `results.json`) →
+  `paddleocr-layout assemble <dir>/results.json` → one markdown doc on stdout.
+- We write that markdown to `preds/<stem>.md` where `<stem>` = the GT `image_path` with its **last 4
+  chars stripped** — byte-for-byte what `end2end_dataset.py` looks up (`img_name[:-4] + '.md'`).
+  Verified against both `.png` and `.jpg` GT names.
+- Scorer: `pdf_validation.py --config <subset>.end2end.yaml`, `match_method: quick_match`, from the
+  pinned eval repo (`59b103c`) in the isolated `scorer-venv`.
+- Repro: `bench/omnidocbench/{run_pipeline.sh, make_subset.py}`, stem list
+  `subsets/smoke5.txt`; scorer stdout captured at `bench/omnidocbench/results/smoke5.scorer.log`.
+
+**Markdown-dialect conversion — surfaced on these 5 (the point of the slice):**
+- **JPEG decode was a hard blocker (fixed).** The layout binary was built `image` = png-only;
+  **981/1651 (59%) GT pages are `.jpg`** → `Unsupported(Jpeg)`. Fix: add the `jpeg` feature
+  (`Cargo.toml`), rebuild. Now decodes both. Without this the majority of the benchmark can't run.
+- **Tables:** OTSL (`<fcel>`/`<nl>`) → GitHub-markdown pipe tables; the scorer's `md_table_reg`
+  matches them and converts to HTML for TEDS. Aligned — no fix.
+- **Formulas:** the VL model *itself* emits `\[…\]` / `\(…\)` delimiters; `assemble` passes them
+  through verbatim; the scorer's `display_reg`/`inline_reg` catch them. Aligned — no fix. (Earlier
+  worry that formulas were unwrapped was wrong; the model wraps them.)
+- **Figure/chart regions get OCR'd into text (known shortcut, `src/assemble.rs:22`).** Chart crops
+  (scatter plots) transcribe as long numeric dumps that pollute the text_block edit distance:
+  per-source text_block edit = academic **0.995** (near-total mismatch, 2 charts dumped) vs PPT 0.00,
+  exam 0.01, newspaper 0.03. (book = 0.34 — a *separate* nuance: standalone `inline_formula` regions
+  come back wrapped as display `\[…\]`, a minor dialect mismatch, not chart pollution.) The reference
+  emits image placeholders (the scorer strips `![](…)`); we should skip/placeholder `chart`/`image`
+  regions. **Deferred to §2.3 subset diagnosis** so the fix is measured, not guessed.
+
+**5-page raw scores (official scorer, quick_match; edit dist ↓ lower better, TEDS ↑ higher better):**
+
+| metric | ALL_page_avg | edit_whole | edit_sample_avg | note |
+|--------|--------------|------------|-----------------|------|
+| text_block Edit_dist | 0.276 | 0.180 | 0.109 | ALL inflated by 1 academic pg (figure dumps) |
+| display_formula Edit_dist | 0.110 | 0.112 | 0.110 | formulas extracted correctly |
+| table Edit_dist | 0.568 | 0.689 | 0.577 | 2 tables (academic); TEDS below |
+| table TEDS / TEDS-structure | 0.766 / 0.767 | — | — | n=2 tables only |
+| reading_order Edit_dist | 0.133 | 0.057 | 0.133 | — |
+
+Numbers are sane and non-degenerate (not 1.0 = total-miss, not a suspicious 0.0): the scorer matched
+our predictions to GT and produced real per-metric values. That is all this slice was meant to prove.
+
 ## Our measured scores — PENDING
 
 | run | Overall | Text-Edit | Formula-CDM | Table-TEDS | ReadOrder-Edit | verdict |
 |-----|---------|-----------|-------------|------------|----------------|---------|
-| 5-page plumbing slice | PENDING | PENDING | PENDING | PENDING | PENDING | — |
+| 5-page plumbing slice | n/a (n=5) | 0.276 pg-avg | n/a (edit 0.110; no CDM env) | 0.766 (n=2) | 0.133 | plumbing OK |
 | stratified subset (~100–200) | PENDING | PENDING | PENDING | PENDING | PENDING | — |
 | full v1.5 (1651) | PENDING | PENDING | PENDING | PENDING | PENDING | — |
 

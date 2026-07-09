@@ -1,0 +1,142 @@
+DATASET_REGISTRY:  ['recogition_text_dataset', 'omnidocbench_single_module_dataset', 'recogition_formula_dataset', 'recogition_table_dataset', 'end2end_dataset', 'recogition_end2end_base_dataset', 'recogition_end2end_table_dataset', 'detection_dataset', 'detection_dataset_simple_format', 'md2md_dataset']
+METRIC_REGISTRY:  ['TEDS', 'BLEU', 'METEOR', 'Edit_dist', 'CDM', 'CDM_plain']
+EVAL_TASK_REGISTRY:  ['detection_eval', 'end2end_eval', 'recogition_eval']
+  0%|                                                                                                                 | 0/5 [00:00<?, ?it/s]Processing book_en_国外数学教材-An Excursion through Elementary Mathematics（初等数学漫游）-An excursion through elementary mathematics, VolProcessing PPT_LEP power point presentation-English-FINAL-10-31-07_page_006.md:   0%|                                 | 0/5 [00:00<?, ?it/s]Processing docstructbench_llm-raw-scihub-o.O-ceat.200600410.pdf_5.md:   0%|                                           | 0/5 [00:00<?, ?it/s]Processing jiaocai_jiaocai_en_91.md:   0%|                                                                            | 0/5 [00:00<?, ?it/s]Processing newspaper_2a6b4fa088699701a6fa9ccecfb5c25d_9.md:   0%|                                                     | 0/5 [00:00<?, ?it/s]Processing newspaper_2a6b4fa088699701a6fa9ccecfb5c25d_9.md: 100%|#############################################| 5/5 [00:00<00:00, 49.10it/s]Processing newspaper_2a6b4fa088699701a6fa9ccecfb5c25d_9.md: 100%|#############################################| 5/5 [00:00<00:00, 49.06it/s]
+###### Process:  smoke5_quick_match
+【text_block】
+Edit_dist:
+---------------  --------
+ALL_page_avg     0.275726
+edit_whole       0.180171
+edit_sample_avg  0.109039
+---------------  --------
+====================================================================================================
+----Anno Attribute---------------
+sample_count:
+
+====================================================================================================
+Edit_dist:
+--------------------------------  ---------
+ALL                               0.275726
+None                              0.339102
+data_source: PPT2PDF              0
+data_source: academic_literature  0.995279
+data_source: book                 0.339102
+data_source: exam_paper           0.0127953
+data_source: newspaper            0.0314519
+language: english                 0.275726
+layout: double_column             0.995279
+layout: single_column             0.117299
+layout: three_column              0.0314519
+subset: v1.5                      0.275726
+watermark                         0
+--------------------------------  ---------
+====================================================================================================
+【display_formula】
+Edit_dist:
+---------------  --------
+ALL_page_avg     0.110256
+edit_whole       0.112
+edit_sample_avg  0.110256
+---------------  --------
+====================================================================================================
+----Anno Attribute---------------
+sample_count:
+
+====================================================================================================
+Edit_dist:
+--------------------------------  ---------
+ALL                               0.110256
+None                              0.0666667
+data_source: academic_literature  0.153846
+data_source: book                 0.0666667
+language: english                 0.110256
+layout: double_column             0.153846
+layout: single_column             0.0666667
+subset: v1.5                      0.110256
+--------------------------------  ---------
+====================================================================================================
+【table】
+TEDS:
+---  --------
+all  0.688333
+---  --------
+====================================================================================================
+TEDS_structure_only:
+---  --------
+all  0.689567
+---  --------
+====================================================================================================
+Edit_dist:
+---------------  --------
+ALL_page_avg     0.567704
+edit_whole       0.689227
+edit_sample_avg  0.576514
+---------------  --------
+====================================================================================================
+----Anno Attribute---------------
+sample_count:
+
+====================================================================================================
+Edit_dist:
+--------------------------------  --------
+ALL                               0.567704
+data_source: academic_literature  0.697052
+data_source: exam_paper           0.438356
+language: english                 0.567704
+layout: double_column             0.697052
+layout: single_column             0.438356
+subset: v1.5                      0.567704
+--------------------------------  --------
+====================================================================================================
+TEDS:
+--------------------------------  --------
+ALL                               0.76625
+data_source: academic_literature  0.532499
+data_source: exam_paper           1
+language: english                 0.76625
+layout: double_column             0.532499
+layout: single_column             1
+subset: v1.5                      0.76625
+--------------------------------  --------
+====================================================================================================
+TEDS_structure_only:
+--------------------------------  --------
+ALL                               0.767176
+data_source: academic_literature  0.534351
+data_source: exam_paper           1
+language: english                 0.767176
+layout: double_column             0.534351
+layout: single_column             1
+subset: v1.5                      0.767176
+--------------------------------  --------
+====================================================================================================
+【reading_order】
+Edit_dist:
+---------------  ---------
+ALL_page_avg     0.133333
+edit_whole       0.0571429
+edit_sample_avg  0.133333
+---------------  ---------
+====================================================================================================
+----Anno Attribute---------------
+sample_count:
+
+====================================================================================================
+Edit_dist:
+--------------------------------  --------
+ALL                               0.133333
+None                              0
+data_source: PPT2PDF              0
+data_source: academic_literature  0.666667
+data_source: book                 0
+data_source: exam_paper           0
+data_source: newspaper            0
+language: english                 0.133333
+layout: double_column             0.666667
+layout: single_column             0
+layout: three_column              0
+subset: v1.5                      0.133333
+watermark                         0
+--------------------------------  --------
+====================================================================================================

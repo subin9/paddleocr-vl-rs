@@ -2,6 +2,27 @@
 
 Honest roadmap. Each item lists why it is valuable and what the hard part actually is.
 
+## Skip / placeholder chart+image regions in end2end assembly (measured on §2.2 slice)
+
+**Why:** the assembler OCRs `chart`/`image` crops into markdown text (`src/assemble.rs:22`, known
+shortcut). On the §2.2 5-page slice this transcribed scatter-plot data as long numeric dumps and
+inflated the academic text_block edit distance to 0.995 (near-total mismatch) vs 0.00–0.03 on
+ppt/exam/newspaper. The OmniDocBench reference emits image placeholders that the scorer strips
+(`![](…)`), so
+emitting nothing / a placeholder for chart+image should only help or be neutral for the scored
+metrics. **Hard part:** confirming a chart/image region never carries scoreable text (axis titles,
+captions are separate `figure_caption`/`chart_caption` classes, so likely safe) — measure the delta
+on the §2.3 subset before/after, don't blind-apply.
+
+## Load-once page-iterating recognize mode (before the full 1651-page run)
+
+**Why:** `paddleocr_vl_recognize` builds one engine (loads the checkpoint) per process invocation,
+and the driver invokes it once per page. Model load is only ~1.5s (small 0.9B ckpt) so the full run
+is still ~2.3h, but a load-once mode that iterates page dirs removes 1651 redundant loads and is the
+clean way to run + time the full set. **Hard part:** none structural — add an arg mode to the
+example that loops over multiple manifest dirs reusing one built model; keep the per-page contract
+identical so `run_pipeline.sh` stays the fallback.
+
 ## OmniDocBench full-benchmark accuracy-preservation run
 
 **Why:** elevates the current 9-fixture token-parity check to a standard document-parsing benchmark,

@@ -26,8 +26,8 @@ path = "src/main.rs"
 # runtime, so the build never link-fails against a prebuilt static lib that needs a newer glibc
 # than the host provides. Point ORT_DYLIB_PATH at your libonnxruntime.so (see README).
 ort = { version = "=2.0.0-rc.12", features = ["load-dynamic"] }
-# png-only keeps image decoding lean (page renders and region crops are PNG).
-image = { version = "0.25", default-features = false, features = ["png"] }
+# PDF page renders + region crops are PNG; OmniDocBench GT pages are ~59% JPEG, so decode both.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 # Parses the recognition stage's results.json (its text fields carry arbitrary VLM output with
 # newline/quote/backslash escaping, so a real JSON parser is required).
 serde_json = "1"

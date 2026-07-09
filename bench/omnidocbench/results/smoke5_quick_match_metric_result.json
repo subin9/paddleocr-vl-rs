@@ -1,0 +1,131 @@
+{
+    "text_block": {
+        "all": {
+            "Edit_dist": {
+                "ALL_page_avg": 0.27572558896045213,
+                "edit_whole": 0.18017067791734587,
+                "edit_sample_avg": 0.10903874592372328
+            }
+        },
+        "group": {
+            "sample_count": {}
+        },
+        "page": {
+            "Edit_dist": {
+                "ALL": 0.27572558896045213,
+                "None": 0.33910221741481883,
+                "data_source: PPT2PDF": 0.0,
+                "data_source: academic_literature": 0.9952785646836638,
+                "data_source: book": 0.33910221741481883,
+                "data_source: exam_paper": 0.012795275590551181,
+                "data_source: newspaper": 0.031451887113226794,
+                "language: english": 0.27572558896045213,
+                "layout: double_column": 0.9952785646836638,
+                "layout: single_column": 0.11729916433512333,
+                "layout: three_column": 0.031451887113226794,
+                "subset: v1.5": 0.27572558896045213,
+                "watermark": 0.0
+            }
+        }
+    },
+    "display_formula": {
+        "all": {
+            "Edit_dist": {
+                "ALL_page_avg": 0.11025641025641025,
+                "edit_whole": 0.112,
+                "edit_sample_avg": 0.11025641025641025
+            }
+        },
+        "group": {
+            "sample_count": {}
+        },
+        "page": {
+            "Edit_dist": {
+                "ALL": 0.11025641025641025,
+                "None": 0.06666666666666667,
+                "data_source: academic_literature": 0.15384615384615385,
+                "data_source: book": 0.06666666666666667,
+                "language: english": 0.11025641025641025,
+                "layout: double_column": 0.15384615384615385,
+                "layout: single_column": 0.06666666666666667,
+                "subset: v1.5": 0.11025641025641025
+            }
+        }
+    },
+    "table": {
+        "all": {
+            "TEDS": {
+                "all": 0.6883327036540052
+            },
+            "TEDS_structure_only": {
+                "all": 0.6895674300254453
+            },
+            "Edit_dist": {
+                "ALL_page_avg": 0.5677039332101543,
+                "edit_whole": 0.6892265193370166,
+                "edit_sample_avg": 0.5765141233433025
+            }
+        },
+        "group": {
+            "sample_count": {}
+        },
+        "page": {
+            "Edit_dist": {
+                "ALL": 0.5677039332101543,
+                "data_source: academic_literature": 0.6970517020367469,
+                "data_source: exam_paper": 0.4383561643835616,
+                "language: english": 0.5677039332101543,
+                "layout: double_column": 0.6970517020367469,
+                "layout: single_column": 0.4383561643835616,
+                "subset: v1.5": 0.5677039332101543
+            },
+            "TEDS": {
+                "ALL": 0.7662495277405039,
+                "data_source: academic_literature": 0.5324990554810078,
+                "data_source: exam_paper": 1.0,
+                "language: english": 0.7662495277405039,
+                "layout: double_column": 0.5324990554810078,
+                "layout: single_column": 1.0,
+                "subset: v1.5": 0.7662495277405039
+            },
+            "TEDS_structure_only": {
+                "ALL": 0.767175572519084,
+                "data_source: academic_literature": 0.5343511450381679,
+                "data_source: exam_paper": 1.0,
+                "language: english": 0.767175572519084,
+                "layout: double_column": 0.5343511450381679,
+                "layout: single_column": 1.0,
+                "subset: v1.5": 0.767175572519084
+            }
+        }
+    },
+    "reading_order": {
+        "all": {
+            "Edit_dist": {
+                "ALL_page_avg": 0.13333333333333333,
+                "edit_whole": 0.05714285714285714,
+                "edit_sample_avg": 0.13333333333333333
+            }
+        },
+        "group": {
+            "sample_count": {}
+        },
+        "page": {
+            "Edit_dist": {
+                "ALL": 0.13333333333333333,
+                "None": 0.0,
+                "data_source: PPT2PDF": 0.0,
+                "data_source: academic_literature": 0.6666666666666666,
+                "data_source: book": 0.0,
+                "data_source: exam_paper": 0.0,
+                "data_source: newspaper": 0.0,
+                "language: english": 0.13333333333333333,
+                "layout: double_column": 0.6666666666666666,
+                "layout: single_column": 0.0,
+                "layout: three_column": 0.0,
+                "subset: v1.5": 0.13333333333333333,
+                "watermark": 0.0
+            }
+        }
+    }
+}
