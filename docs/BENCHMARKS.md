@@ -193,6 +193,18 @@ textbooks, financial reports, exam papers, ...).
   The scorer is pure-CPU post-processing, so it gets a **separate** venv; it never shares the
   inference env. (CDM formula metric needs an extra env; `CDM_plain` in the config exports the CDM
   input JSON without it — decide at subset time whether to stand up full CDM or accept `CDM_plain`.)
+- **CDM decision — RESOLVED (Iter-12): scored with `Edit_dist`, not CDM.** Probed the scorer-venv:
+  `CDM` is in `METRIC_REGISTRY` and `latex2bbox_color` imports OK, **but the box has no LaTeX
+  toolchain** — `pdflatex`/`xelatex`/`latex`/`dvisvgm` all missing (only `node` present), so CDM's
+  render step would fail at runtime. Upstream requires a dedicated CDM environment (README recommends
+  Docker); standing up a full TeX distribution is a heavyweight, out-of-scope side quest. **Decision:**
+  formula is scored with `display_formula Edit_dist` (as the committed `subset150.end2end.yaml`
+  already does). **Consequence for the compare:** Text-Edit (paper 0.035) and Table-TEDS (paper 92.76)
+  are **directly comparable** to the reference; formula is a **different metric** than the paper's CDM
+  (94.21), so the paper's official CDM-based `Overall` (94.50) **cannot be reproduced exactly**. We
+  report per-metric + an **Edit-only proxy Overall** using `((1−text_Edit)×100 + table_TEDS +
+  (1−formula_Edit)×100)/3`, **clearly flagged as a proxy** (substitutes formula-Edit for formula-CDM),
+  never presented as the official 94.5-comparable Overall.
 - **Scorer venv stood up + smoke-tested (PASSED).** `bench/omnidocbench/setup_scorer_venv.sh` builds
   an isolated **Python 3.10** venv via `uv` from the pinned `requirements.txt` (py3.10 chosen because
   the old pins have cp310 manylinux wheels — no source builds; installed clean). Ran the scorer
