@@ -71,45 +71,184 @@ pub fn assemble_markdown(blocks: &[(String, String)]) -> String {
         out.push(match class.as_str() {
             "doc_title" => format!("# {text}"),
             "paragraph_title" | "figure_title" => format!("## {text}"),
-            "table" => otsl_to_markdown(text),
+            "table" => otsl_to_html(text),
             _ => text.to_string(),
         });
     }
     out.join("\n\n")
 }
 
-/// Render PaddleOCR-VL table output (OTSL: `<fcel>`=cell, `<nl>`=row; merge/empty markers
-/// `<ecel>/<lcel>/<ucel>/<xcel>` collapse to a cell boundary) as a GitHub markdown table. Falls
-/// back to the raw string if it doesn't parse as a grid.
-fn otsl_to_markdown(otsl: &str) -> String {
-    let norm = otsl
-        .replace("<ecel>", "<fcel>")
-        .replace("<lcel>", "<fcel>")
-        .replace("<ucel>", "<fcel>")
-        .replace("<xcel>", "<fcel>");
-    let rows: Vec<Vec<String>> = norm
-        .split("<nl>")
-        .map(str::trim)
-        .filter(|r| !r.is_empty())
-        .map(|row| {
-            row.split("<fcel>")
-                .skip(1) // drop the fragment before the first cell marker
-                .map(|c| c.trim().to_string())
-                .collect()
-        })
-        .collect();
-    let ncol = rows.iter().map(Vec::len).max().unwrap_or(0);
-    if ncol == 0 {
-        return otsl.to_string();
-    }
-    let render = |r: &Vec<String>| {
-        let mut c = r.clone();
-        c.resize(ncol, String::new());
-        format!("| {} |", c.join(" | "))
+/// The six OTSL v1.0 tags PaddleOCR-VL emits for a table: `<fcel>` = cell with content, `<ecel>` =
+/// empty cell, `<lcel>`/`<ucel>`/`<xcel>` = this grid slot is a continuation of the span reaching
+/// left / up / both, `<nl>` = end of row.
+const OTSL_CELL_TAGS: [&str; 5] = ["<fcel>", "<ecel>", "<lcel>", "<ucel>", "<xcel>"];
+
+/// Split one OTSL row into its `(tag, text)` cells -- each tag plus the text up to the next tag.
+/// Text before the first tag is dropped, as the reference's `OTSL_FIND_PATTERN` does.
+fn otsl_cells(row: &str) -> Vec<(&'static str, &str)> {
+    let next_tag = |s: &str| {
+        OTSL_CELL_TAGS
+            .iter()
+            .filter_map(|t| s.find(t).map(|p| (p, *t)))
+            .min()
     };
-    let mut out = vec![render(&rows[0]), format!("|{}", " --- |".repeat(ncol))];
-    out.extend(rows[1..].iter().map(render));
-    out.join("\n")
+    let mut cells = Vec::new();
+    let mut rest = row;
+    while let Some((pos, tag)) = next_tag(rest) {
+        let after = &rest[pos + tag.len()..];
+        let end = next_tag(after).map_or(after.len(), |(p, _)| p);
+        cells.push((tag, after[..end].trim()));
+        rest = &after[end..];
+    }
+    cells
+}
+
+/// Pad the rows out to one common width, porting the reference's `otsl_pad_to_sqr_v2`: pick the
+/// width minimising the total number of cells added or dropped, but never narrower than the last
+/// `<fcel>` of any row (so padding can truncate a run of trailing spans, never real content).
+fn otsl_pad_to_rect(rows: &mut Vec<Vec<(&'static str, &str)>>) {
+    rows.retain(|r| !r.is_empty());
+    let min_width = rows
+        .iter()
+        .map(|r| r.iter().rposition(|(t, _)| *t == "<fcel>").map_or(0, |i| i + 1))
+        .max()
+        .unwrap_or(0);
+    let max_width = rows.iter().map(Vec::len).max().unwrap_or(0);
+    let cost = |w: usize| -> usize { rows.iter().map(|r| r.len().abs_diff(w)).sum() };
+    let width = (min_width..=max_width.max(min_width))
+        .min_by_key(|&w| cost(w))
+        .unwrap_or(0);
+    for row in rows.iter_mut() {
+        row.resize(width, ("<ecel>", ""));
+    }
+}
+
+/// Render PaddleOCR-VL table output (OTSL) as an HTML table, porting the reference's
+/// `convert_otsl_to_html` (PaddleX `pipelines/paddleocr_vl/uilts.py`: `otsl_pad_to_sqr_v2` ->
+/// `otsl_parse_texts` -> `export_to_html`). Spans MUST survive as `rowspan`/`colspan`: the
+/// benchmark scores tables with TEDS, which compares the cell tree, and a GitHub pipe-table -- what
+/// this used to emit -- cannot express a merged cell at all. Falls back to the raw string when the
+/// text holds no grid.
+fn otsl_to_html(otsl: &str) -> String {
+    let mut rows: Vec<Vec<(&str, &str)>> = otsl.split("<nl>").map(otsl_cells).collect();
+    otsl_pad_to_rect(&mut rows);
+    let (nrows, ncols) = (rows.len(), rows.first().map_or(0, Vec::len));
+    if ncols == 0 {
+        // DELIBERATE divergence: the reference returns "" here, dropping the region's content. A
+        // mis-classified region keeps its text instead, so the text metric can still see it. Never
+        // fires on real data (0 of the 739 tables in the full run).
+        return otsl.trim().to_string();
+    }
+
+    // The reference walks an INTERLEAVED list -- each cell's tag, then its text when it has one --
+    // rather than the grid, and reads a cell's text as "the next element in that list". Rebuilt
+    // here because that detail is load-bearing: see the quirk below.
+    let mut flat: Vec<&str> = Vec::new();
+    for row in &rows {
+        for (tag, text) in row {
+            flat.push(tag);
+            if !text.is_empty() {
+                flat.push(text);
+            }
+        }
+        flat.push("<nl>");
+    }
+
+    // (start_row, start_col, row_span, col_span, text) per origin cell. A span reaches right over
+    // `<lcel>`/`<xcel>` and down over `<ucel>`/`<xcel>`, exactly as the reference counts it.
+    let span_right = |r: usize, mut c: usize| {
+        let mut n = 0;
+        while matches!(rows[r].get(c), Some(("<lcel>" | "<xcel>", _))) {
+            (n, c) = (n + 1, c + 1);
+        }
+        n
+    };
+    let span_down = |mut r: usize, c: usize| {
+        let mut n = 0;
+        while matches!(rows.get(r).and_then(|row| row.get(c)), Some(("<ucel>" | "<xcel>", _))) {
+            (n, r) = (n + 1, r + 1);
+        }
+        n
+    };
+
+    let mut cells = Vec::new();
+    let (mut r, mut c) = (0usize, 0usize);
+    for (i, &tag) in flat.iter().enumerate() {
+        if tag == "<fcel>" || tag == "<ecel>" {
+            // QUIRK, reproduced on purpose: the reference takes a `<fcel>`'s text to be the next
+            // element of the interleaved list -- so an `<fcel>` carrying NO text swallows the next
+            // TAG, and that tag's literal string ("<ecel>", "<nl>") ends up escaped into the cell.
+            // Its colspan probe is knocked one element out of step for the same reason. Measured:
+            // fires on 5 of the run's 739 tables, always an empty `<fcel>`, and it can only ADD
+            // junk to a cell -- reproducing it costs us a little TEDS rather than winning any, and
+            // it keeps `tests/otsl_html_parity.rs` an exact pin against PaddleX.
+            let (text, right_offset) = match tag {
+                "<ecel>" => ("", 1),
+                _ => (*flat.get(i + 1).unwrap_or(&""), 2),
+            };
+            let mut col_span = 1;
+            if matches!(flat.get(i + right_offset), Some(&("<lcel>" | "<xcel>"))) {
+                col_span += span_right(r, c + 1);
+            }
+            let mut row_span = 1;
+            if matches!(rows.get(r + 1).and_then(|row| row.get(c)), Some(("<ucel>" | "<xcel>", _))) {
+                row_span += span_down(r + 1, c);
+            }
+            cells.push((r, c, row_span, col_span, text));
+        }
+        if OTSL_CELL_TAGS.contains(&tag) {
+            c += 1;
+        } else if tag == "<nl>" {
+            (r, c) = (r + 1, 0);
+        }
+    }
+
+    // Paint each cell over the slots it spans, last writer winning -- the reference builds its grid
+    // the same way, so a malformed table where a later cell overlaps an earlier one's span degrades
+    // identically. A slot no cell ever claims stays empty and still renders, as an empty `<td>`.
+    let mut grid = vec![vec![usize::MAX; ncols]; nrows];
+    for (k, &(r, c, row_span, col_span, _)) in cells.iter().enumerate() {
+        for row in grid.iter_mut().skip(r).take(row_span) {
+            for slot in row.iter_mut().skip(c).take(col_span) {
+                *slot = k;
+            }
+        }
+    }
+
+    let mut html = String::from("<table>");
+    for (i, row) in grid.iter().enumerate() {
+        html.push_str("<tr>");
+        for (j, &k) in row.iter().enumerate() {
+            let Some(&(r, c, row_span, col_span, text)) = cells.get(k) else {
+                html.push_str("<td></td>");
+                continue;
+            };
+            if (r, c) != (i, j) {
+                continue; // a slot this cell spans into, not its origin
+            }
+            html.push_str("<td");
+            if row_span > 1 {
+                html.push_str(&format!(" rowspan=\"{row_span}\""));
+            }
+            if col_span > 1 {
+                html.push_str(&format!(" colspan=\"{col_span}\""));
+            }
+            html.push_str(&format!(">{}</td>", escape_html(text)));
+        }
+        html.push_str("</tr>");
+    }
+    html.push_str("</table>");
+    html
+}
+
+/// Escape cell text for HTML, matching Python's `html.escape` (which the reference calls): `&`
+/// first, then `<`, `>`, and both quote forms. Real tables carry these -- `S&P 500`, `<0.05`.
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
 }
 
 /// One recognition task the layout stage hands to the recognition stage: the crop lives at
@@ -195,16 +334,62 @@ mod tests {
         assert_eq!(task_prompt("image"), "OCR:"); // default fallthrough
     }
 
+    // Every expectation below is the REFERENCE's own output for that input, captured by running
+    // PaddleX's `convert_otsl_to_html` on it -- not hand-derived from the OTSL spec.
     #[test]
-    fn otsl_table_becomes_markdown() {
+    fn otsl_table_becomes_html() {
         // real PaddleOCR-VL table output (greedy, `</s>` already stripped).
-        let md = otsl_to_markdown("<fcel>A<fcel>B<nl><fcel>1<fcel>2<nl>");
-        assert_eq!(md, "| A | B |\n| --- | --- |\n| 1 | 2 |");
+        assert_eq!(
+            otsl_to_html("<fcel>A<fcel>B<nl><fcel>1<fcel>2<nl>"),
+            "<table><tr><td>A</td><td>B</td></tr><tr><td>1</td><td>2</td></tr></table>"
+        );
         // a "table" block routes through the converter in assemble_markdown.
-        let doc = assemble_markdown(&[("table".to_string(), "<fcel>A<fcel>B<nl>".to_string())]);
-        assert_eq!(doc, "| A | B |\n| --- | --- |");
-        // non-OTSL text falls back unchanged (never panics / eats content).
-        assert_eq!(otsl_to_markdown("plain text"), "plain text");
+        assert_eq!(
+            assemble_markdown(&[("table".to_string(), "<fcel>A<fcel>B<nl>".to_string())]),
+            "<table><tr><td>A</td><td>B</td></tr></table>"
+        );
+        // a row with no trailing `<nl>` still closes.
+        assert_eq!(otsl_to_html("<fcel>A"), "<table><tr><td>A</td></tr></table>");
+    }
+
+    #[test]
+    fn otsl_spans_become_rowspan_colspan() {
+        // The whole point of emitting HTML: TEDS compares the cell tree, and 34% of the tables in
+        // the full OmniDocBench run carry a span token. A pipe-table cannot express either of these.
+        assert_eq!(
+            otsl_to_html("<fcel>Y<lcel><nl><fcel>a<fcel>b<nl>"),
+            "<table><tr><td colspan=\"2\">Y</td></tr><tr><td>a</td><td>b</td></tr></table>"
+        );
+        assert_eq!(
+            otsl_to_html("<fcel>H<fcel>I<nl><ucel><fcel>d<nl>"),
+            "<table><tr><td rowspan=\"2\">H</td><td>I</td></tr><tr><td>d</td></tr></table>"
+        );
+        // `<xcel>` spans both ways at once.
+        assert_eq!(
+            otsl_to_html("<fcel>A<lcel><fcel>B<nl><ucel><xcel><fcel>C<nl>"),
+            "<table><tr><td rowspan=\"2\" colspan=\"2\">A</td><td>B</td></tr>\
+             <tr><td>C</td></tr></table>"
+        );
+    }
+
+    #[test]
+    fn otsl_ragged_and_hostile_input_survives() {
+        // Short row is padded to the table's width with empty cells (reference `otsl_pad_to_sqr_v2`).
+        assert_eq!(
+            otsl_to_html("<fcel>A<fcel>B<fcel>C<nl><fcel>1<nl>"),
+            "<table><tr><td>A</td><td>B</td><td>C</td></tr>\
+             <tr><td>1</td><td></td><td></td></tr></table>"
+        );
+        // Cell text carrying HTML metacharacters is escaped, not left to corrupt the parse tree
+        // (real pages: `S&P 500`, `p<0.05`).
+        assert_eq!(
+            otsl_to_html("<fcel>S&P<fcel>x<0.05<nl>"),
+            "<table><tr><td>S&amp;P</td><td>x&lt;0.05</td></tr></table>"
+        );
+        // DELIBERATE divergence from the reference, which returns "" here: text with no grid in it
+        // falls back to itself, so a mis-classified region keeps its content for the text metric
+        // instead of vanishing.
+        assert_eq!(otsl_to_html("plain text"), "plain text");
     }
 
     #[test]
@@ -246,11 +431,11 @@ mod tests {
             ("text".to_string(), "  ".to_string()), // blank -> skipped
             ("table".to_string(), "<fcel>A".to_string()),
         ];
-        // the trailing "table" block (`<fcel>A`) routes through otsl_to_markdown: one cell -> a
-        // 1-column markdown table.
+        // the trailing "table" block (`<fcel>A`) routes through otsl_to_html: one cell -> a
+        // 1x1 HTML table.
         assert_eq!(
             assemble_markdown(&blocks),
-            "# Quarterly Report\n\nBody one.\n\n## Section\n\n| A |\n| --- |"
+            "# Quarterly Report\n\nBody one.\n\n## Section\n\n<table><tr><td>A</td></tr></table>"
         );
     }
 
