@@ -700,6 +700,69 @@ mismatched prediction set.
 worst CDM slices are `fuzzy_content` 0.307, `equation_hard` 0.572, `with_watermark` 0.564 — i.e.
 degraded//low-contrast inputs. Logged to FUTURE_WORK rather than hand-waved.
 
+### Cross-stack: the same crops through llama.cpp (§2.6)
+
+**Question this answers.** Every number above says the port matches the *published* figures. It cannot,
+on its own, say the port matches *the model* — a shared-cause error (a subtly wrong crop, prompt, or
+detok convention) would move our score and the reference's together. So: swap ONLY the recognition
+backend, hold everything else fixed, and see whether an independent implementation of the same weights
+lands in the same place.
+
+**What is held fixed — by construction, not by convention.** `llamacpp_recognize.py` reads the crop
+PNGs and manifests **the scored REF_LAYOUT run already wrote** (`work_reflayout/<stem>/`) and never
+re-runs the detector; per-class prompts come from the manifest verbatim; the output contract is the
+Rust binary's own `results.json`, fed to **the same `paddleocr-layout assemble`**. Layout, crops,
+prompts, assembly, GT, scorer, config and page set are therefore *identical objects*, and the
+recognition backend is the only free variable.
+
+| | Rust port (mistral.rs/candle) | llama.cpp | delta |
+|---|---|---|---|
+| weights | `PaddleOCR-VL-1.5` safetensors, **bf16** | same model, **bf16 GGUF** (`general.file_type=32`) | — |
+| decoding | greedy | greedy (`--temp 0 --top-k 1`) | — |
+| text Edit ↓ | 0.0328 | **0.0325** | −0.0003 |
+| reading-order Edit ↓ | 0.0415 | **0.0414** | −0.0002 |
+| table TEDS ↑ | **92.75** | 92.45 | −0.30 |
+| table TEDS-S ↑ | **95.95** | 95.59 | −0.36 |
+| display-formula Edit ↓ | **0.1833** | 0.1927 | +0.0094 |
+
+`subset: v1.5` slice (the 1355 benchmark pages), official scorer, pin `59b103c`, `quick_match`,
+config `data/subsets/llamacpp1649cmp.end2end.yaml`. **bf16 vs bf16 — no quantization caveat:** the
+GGUF's `general.file_type` is 32 = `LLAMA_FTYPE_MOSTLY_BF16`, for both the LM and the mmproj (read
+out of the GGUF headers directly, not inferred from the filename).
+
+**Page-set parity.** The Rust run has predictions for 1649 of 1651 pages; llama.cpp has all 1651. The
+scorer *skips* a page with no prediction, so scoring each stack on its own set would silently score
+them on **different pages**. Both are therefore scored on the **1649-page intersection**
+(`preds/llamacpp1649cmp/`, symlinks, set-identical to the Rust set — asserted, not assumed).
+
+**Verdict: MUTUALLY CONFIRMED.** Two independent implementations of these weights — different
+framework, different kernels, different image preprocessing, different tokenizer plumbing — agree to
+**0.0003 edit distance on text and 0.0002 on reading order**. That is far tighter than the distance to
+the published figure, and it is the strongest available evidence that the port reproduces the *model*
+rather than merely reproducing a number. The residual table (−0.30 TEDS) and formula (+0.0094 edit)
+deltas favour the Rust port, are small, and are consistent with ordinary numeric/preprocessing
+divergence between two bf16 stacks; they are **not** attributed further without evidence.
+
+**Robustness, side by side (§2.7).** Same crops, same guards:
+
+| | Rust port | llama.cpp |
+|---|---|---|
+| per-region timeouts (120s → empty text) | **8 crops** | **0** |
+| pages lost to the whole-page guard | **2** (one SIGKILLed at the 600s cap on a 74-crop page; one `rc=1`) | **0** |
+| pages recovered despite a guard trip | 1 (`jiaocai_needrop_en_2496`: 600s cap tripped during teardown, `results.json` already complete → assembled) | — |
+| runaway generation | none (the `TheEconomist p062` hang that motivated the cap now completes in **45s**, 6339 bytes, under `MAX_NEW_TOKENS=2048`) | none |
+
+The 8 Rust region-timeouts each record **empty text** for that region — a small, real accuracy cost the
+llama.cpp run does not pay, and one that slightly *understates* the port. It is left in rather than
+patched out.
+
+**One llama.cpp region-timeout did occur and was thrown away, not scored.** During the run the box went
+unresponsive (llama-server's 8 GB default prompt cache, `-cram`, on a 15.9 GB box — see PROGRESS
+2026-07-12); one table crop tripped the 120s guard and produced a 106-byte page. That page was
+**quarantined and regenerated** on the healthy box: 5 crops, 1845 bytes, 2.3s. Scoring the corrupted
+version would have booked an infrastructure stall as a *llama.cpp accuracy miss that never happened* —
+the guard's job is to make that distinction visible, and the fix is to re-run the page, not to keep it.
+
 ## Caveats
 
 - Different stacks (candle/mistral.rs vs PyTorch/transformers): kernels, memory layout, no quant.
@@ -707,8 +770,10 @@ degraded//low-contrast inputs. Logged to FUTURE_WORK rather than hand-waved.
   *its own* layout stage, prompts and post-processing; our port swaps in our ONNX PP-DocLayoutV3 port,
   our crop glue and our markdown assembler. A divergence therefore does **not** localize to the ported
   VLM weights by itself — attribution is exactly the job of §2.5.
-- Formula CDM is **not measured**. `display_formula` edit-distance is reported as a proxy and is not
-  comparable to the paper's CDM. Any Overall we state is an upper bound, never a point estimate.
+- Formula CDM **is** measured now (91.77 on the benchmark slice; see the CDM section) and is what the
+  `Overall` uses. The older `display_formula` **edit-distance** figures kept in this doc are a *proxy*
+  and are never comparable to the paper's CDM — they are retained only as an internal control and for
+  the cross-stack A/B, where both sides are scored with the same metric.
 - The TTFT/decode split has a minor methodology asymmetry (the port reports an exact
   prefill/decode split from its own `Usage`; the reference times a separate prefill-only forward and
   a separate `generate`). Total latency, the headline, is directly wall-clock comparable.

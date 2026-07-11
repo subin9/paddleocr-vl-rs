@@ -94,5 +94,6 @@ la, lb = report("llama.cpp (bf16 GGUF, resident server)", llama,
 
 print(f"\nper-crop recognition (the like-for-like number): "
       f"Rust {rb:.2f}s vs llama.cpp {lb:.2f}s  -> {rb/lb:.2f}x")
-print(f"fixed per-page overhead: Rust {ra:.1f}s (dominated by the per-page model load our harness "
-      f"pays) vs llama.cpp {la:.1f}s (server resident)")
+print(f"fixed per-page overhead: Rust {ra:.1f}s vs llama.cpp {la:.1f}s (server resident). The Rust "
+      f"figure is harness, not backend: process spawn + bf16 model load + the ONNX layout stage, all "
+      f"paid once per page. See --split below for the measured breakdown.")
