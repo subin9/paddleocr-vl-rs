@@ -55,9 +55,12 @@ const VISUAL_ONLY_CLASSES: [&str; 5] = ["chart", "image", "header_image", "foote
 /// markup/LaTeX). Empty results and [`VISUAL_ONLY_CLASSES`] are skipped. Blocks are separated by a
 /// blank line.
 pub fn assemble_markdown(blocks: &[(String, String)]) -> String {
+    // Ablation knob for the §2.5 divergence analysis: `PADDLEOCR_VL_KEEP_VISUAL=1` keeps the
+    // visual-only blocks so the same results.json can be scored with and without the skip.
+    let keep_visual = std::env::var("PADDLEOCR_VL_KEEP_VISUAL").is_ok_and(|v| v == "1");
     let mut out = Vec::new();
     for (class, text) in blocks {
-        if VISUAL_ONLY_CLASSES.contains(&class.as_str()) {
+        if !keep_visual && VISUAL_ONLY_CLASSES.contains(&class.as_str()) {
             continue;
         }
         let text = text.trim();
