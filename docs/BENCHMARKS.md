@@ -228,17 +228,41 @@ textbooks, financial reports, exam papers, ...).
 | **PaddleOCR-VL-1.5** | **94.50** | 0.035 | 94.21 | 92.76 | 95.79 | 0.042 |
 | PaddleOCR-VL (v1.0)  | 92.86 | 0.035 | 91.22 | 90.89 | 94.76 | 0.043 |
 
-Consistency check: `((1 − 0.035) × 100 + 92.76 + 94.21) / 3 = 94.49 ≈ 94.50` ✓ — the reported
-overall and the formula agree, so the pinned numbers are self-consistent.
+**Independently re-verified 2026-07-11 (§2.4)** — not trusted from this doc or from memory. The rows
+above were re-extracted **verbatim from the raw arXiv HTML table markup** of
+[2601.21957v1](https://arxiv.org/html/2601.21957v1) (Table 2, *"Comprehensive evaluation on
+OmniDocBench v1.5"*), by parsing `<tr>` cells rather than reading a summary:
 
-Re-verified 2026-07-09 against the arxiv abstract (primary source, not this doc): it states verbatim
-"a new state-of-the-art (SOTA) accuracy of **94.5%** on OmniDocBench v1.5" — the headline Overall
-matches. Per-metric Table-2 values (Text-Edit/CDM/TEDS) are consistent with 94.5 via the formula
-above; they live in the PDF Table 2, not the abstract, so they rest on that consistency check.
+```
+Model Type | Methods | Parameters | Overall↑ | TextEdit↓ | FormulaCDM↑ | TableTEDS↑ | TableTEDS-S↑ | Reading OrderEdit↓
+PaddleOCR-VL [cui2025paddleocrvl] | 0.9B | 92.86 | 0.035 | 91.22 | 90.89 | 94.76 | 0.043
+PaddleOCR-VL-1.5              | 0.9B | 94.50 | 0.035 | 94.21 | 92.76 | 95.79 | 0.042
+```
+
+**The checkpoint we run is PaddleOCR-VL-1.5, confirmed by content hash — not by filename.**
+`ref/weights/model.safetensors` sha256 = `d557c9d8997ae57ed3b1b33bdf347be878cc335687f32ca105341c16973f8958`,
+which equals the LFS oid of `model.safetensors` in
+[PaddlePaddle/PaddleOCR-VL-1.5](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.5) (HF API
+`/tree/main`) and **not** that of `PaddleOCR-VL` (`3085f104…`) or `PaddleOCR-VL-1.6` (`85a479d5…`).
+So the **94.50 row is the correct target**, and the v1.0 row is not.
+
+**Official `Overall` definition** (from the scorer's own repo, not the paper —
+[OmniDocBench README](https://github.com/opendatalab/OmniDocBench) `README.md:414`, eval pin `59b103c`):
+
+$$\text{Overall} = \frac{(1-\text{Text Edit Distance}) \times 100 + \text{Table TEDS} + \text{Formula CDM}}{3}$$
+
+The same README (`:71`) pins the **aggregation**: v1.5 *"removed the Chinese/English grouping, now
+calculating the average score across all pages"* → the published `TextEdit` is the **all-pages
+average** (`ALL_page_avg`), not an English-only or corpus-concatenated (`edit_whole`) figure. This
+matters: it fixes which of our three scorer aggregates is the apples-to-apples one.
+
+Consistency check (this validates the definition, the aggregation, *and* the transcribed row):
+`((1 − 0.035)×100 + 92.76 + 94.21) / 3 = 94.49 ≈ **94.50**` ✓ and for v1.0
+`((1 − 0.035)×100 + 90.89 + 91.22) / 3 = 92.87 ≈ **92.86**` ✓. Both published Overalls reproduce from
+their own per-metric cells to ±0.01, so the numbers are self-consistent and correctly transcribed.
 
 **This is the target the Rust port must land within noise of.** PRESERVED = overall within scorer
-noise of 94.50 (noise band to be quantified from the subset run); DIVERGES = otherwise, reported
-with the per-doc-type breakdown.
+noise of 94.50; DIVERGES = otherwise, reported with the per-doc-type breakdown.
 
 ## Plumbing validation (§2.2, n=5) — integration proven, NOT an accuracy verdict
 
@@ -314,7 +338,7 @@ This slice proves the integration AND the visual-skip fix; it is NOT the accurac
 |-----|---------|-----------|-------------|------------|----------------|---------|
 | 5-page slice (visual-skip) | n/a (n=5) | 0.077 pg-avg | edit 0.110 (no CDM env) | 0.997 / — (n=2) | 0.000 | plumbing + skip OK |
 | **stratified subset (n=150)** | **84.1 (Edit-proxy)** | **0.0709** pg-avg | **edit 0.2724** (NOT CDM) | **0.8659 / 0.9112** | **0.0919** | **SANE — proceed to full** |
-| full v1.5 (1651) | PENDING | PENDING | PENDING | PENDING | PENDING | — |
+| **full v1.5 (1651)** | **≤ 91.80** (see below) | **0.0797** pg-avg | edit 0.2559 (**NOT CDM**) | **0.8336 / 0.8761** | **0.0929** | **DIVERGES** |
 | **paper reference (full 1651)** | 94.50 | 0.035 | CDM 94.21 | 92.76 / 95.79 | 0.042 | target |
 
 Speed table (secondary; Rust GPU-bf16 vs transformers floor, per-stage) also PENDING — see the
@@ -359,9 +383,87 @@ Not "diverges badly" per §2.3: metrics are non-degenerate, English lands on the
 elevated aggregate is explained by intentional hard-case stratification. The full-set overall vs
 94.50 (with the same Edit-proxy caveat, or full CDM if a LaTeX env is stood up) is the accuracy verdict.
 
+### Full set (n=1651) vs published — side-by-side and VERDICT (§2.4)
+
+Scored by the official `pdf_validation.py` (eval pin `59b103c` + the upstream dangling-anno-id guard,
+`quick_match`, config `full1651.end2end.yaml`), GPU-bf16, K=1 serial recognition. Result JSON:
+`bench/omnidocbench/results/full1651_quick_match_metric_result.json`. **1649/1651 pages scored** — the
+2 empty-layout pages have no `.md`, and the scorer *skips* them (`end2end_dataset.py:172` → `continue`,
+confirmed by exactly 2 `!!!WARNING: No prediction` lines in the run log), so they are excluded from the
+denominator rather than 0-scored. Our numbers are therefore, if anything, marginally *flattered*.
+
+Aggregation is `ALL_page_avg` for the edit metrics, matching the published convention pinned above.
+
+| metric | ours (1651) | published PaddleOCR-VL-1.5 | delta | comparable? |
+|--------|-------------|----------------------------|-------|-------------|
+| Text-Edit ↓ | **0.0797** | **0.035** | **2.28× worse** (+0.045) | ✅ same metric, same aggregation |
+| Table-TEDS ↑ | **83.36** | **92.76** | **−9.40 pts** | ✅ |
+| Table-TEDS-S ↑ | **87.61** | **95.79** | **−8.18 pts** | ✅ |
+| ReadOrder-Edit ↓ | **0.0929** | **0.042** | **2.21× worse** (+0.051) | ✅ |
+| Formula | edit-dist 0.2559 | **CDM 94.21** | — | ❌ **NOT COMPARABLE** — different metric |
+| **Overall** | **≤ 91.80** | **94.50** | **≥ −2.70** | bounded, see below |
+
+**The Overall is bounded, not extrapolated.** We have not run CDM (it needs a LaTeX render environment;
+our formula edit-distance is a *proxy*, not a substitute). But CDM is bounded by 100 by construction, so
+plugging our two measured components into the official formula gives a hard **upper bound**:
+
+- ours, granting a *perfect* formula score (CDM = 100): `((1−0.0797)×100 + 83.36 + 100)/3` = **91.80**
+- ours, granting the *published* formula score verbatim (CDM = 94.21): `(92.03 + 83.36 + 94.21)/3` = **89.87**
+
+Even in the physically-impossible best case the port cannot reach 94.50. **The verdict does not depend
+on the missing CDM number.**
+
+**VERDICT: DIVERGES.** Text edit distance is 2.3× the published figure, table TEDS is 9.4 points below,
+reading order is 2.2× worse, and the Overall ceiling (91.80) sits 2.70 points under the published 94.50.
+This is not scorer noise — it is a consistent gap across three independent metrics on the full
+1651-page benchmark, i.e. the same set the paper reports on. **The accuracy-preservation claim for this
+port is NOT supported.**
+
+**Correction to the subset150 verdict above — its central argument does not survive the full run.**
+That section argued the gap was "subset-composition-driven, not a port defect", resting on
+*"English text-edit 0.0338 vs paper 0.035 … within noise"*. Two problems, both visible only now:
+
+1. **That comparison was never apples-to-apples.** The published 0.035 is an **all-pages** average (the
+   v1.5 leaderboard removed the EN/ZH split — see the README pin above). Comparing our *English-only*
+   slice against their *all-pages* figure is a category error; it silently gave the port the easiest
+   slice and the paper the full mix.
+2. **The number itself did not hold.** On the full set, `language: english` text-edit is **0.0575**, not
+   0.0338 — the subset's 68 English pages were an easy draw, not a representative one.
+
+The composition explanation is therefore withdrawn. The gap is **present in the aggregate the paper
+actually reports**, and §2.5 must attribute it (layout/reading-order vs in-crop recognition vs
+assembly), not explain it away. Known assembly-side contributor already found in §2.2: the assembler
+**emits no text for `image`-class regions** (page `yanbaopptmerge_yanbaoPPT_5885` recognized "流水声" and
+then dropped it), which costs text-edit on every page whose content the layout model labels `image`.
+
+**Worst slices on the full set** (text-edit ↓, page-avg) — §2.5 targets:
+
+| slice | Text-Edit | ReadOrder-Edit | note |
+|-------|-----------|----------------|------|
+| handwriting | **0.4740** | **0.4423** | worst by far; both metrics collapse together |
+| text_O-shaped_wrap | 0.3417 | 0.5625 | reading-order failure ⇒ text failure |
+| transparent_pages | 0.2251 | 0.1586 | |
+| text_embedded_in_image | 0.1674 | 0.4470 | consistent with the `image`-region drop above |
+| data_source: historical_document | 0.1551 | 0.3368 | |
+| data_source: fuzzy_scan | 0.1502 | 0.1043 | (much milder than subset150's 0.5025) |
+| language: traditional_chinese | 0.1489 | 0.2536 | |
+| language: simplified_chinese | 0.1017 | 0.1154 | vs english 0.0575 — CJK ~1.8× worse |
+| data_source: research_report | 0.1016 | 0.1254 | |
+
+The tight coupling of text-edit and reading-order edit on the worst slices (handwriting,
+O-shaped-wrap, text-embedded-in-image) is the strongest available hint that a **large share of the gap
+is layout/assembly-side, not in-crop recognition** — but that is a hypothesis for §2.5 to test, not a
+finding. It is recorded here as such.
+
 ## Caveats
 
 - Different stacks (candle/mistral.rs vs PyTorch/transformers): kernels, memory layout, no quant.
+- **The published pipeline is not only the VLM.** The paper's number is end-to-end PaddleOCR-VL-1.5 with
+  *its own* layout stage, prompts and post-processing; our port swaps in our ONNX PP-DocLayoutV3 port,
+  our crop glue and our markdown assembler. A divergence therefore does **not** localize to the ported
+  VLM weights by itself — attribution is exactly the job of §2.5.
+- Formula CDM is **not measured**. `display_formula` edit-distance is reported as a proxy and is not
+  comparable to the paper's CDM. Any Overall we state is an upper bound, never a point estimate.
 - The TTFT/decode split has a minor methodology asymmetry (the port reports an exact
   prefill/decode split from its own `Usage`; the reference times a separate prefill-only forward and
   a separate `generate`). Total latency, the headline, is directly wall-clock comparable.
