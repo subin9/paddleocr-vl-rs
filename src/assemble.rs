@@ -48,7 +48,8 @@ pub fn crop_region(img: &RgbImage, bbox: &[f32; 4]) -> RgbImage {
 /// table TEDS 0.6883 -> 0.9969, reading_order 0.1333 -> 0.0000 (the chart's pipe-rows were being
 /// parsed as a table AND as text). Non-chart pages are unaffected. `image`/`header_image`/
 /// `footer_image`/`seal` share the identical mechanism (visual-only, unmatched pred -> pollution).
-const VISUAL_ONLY_CLASSES: [&str; 5] = ["chart", "image", "header_image", "footer_image", "seal"];
+pub(crate) const VISUAL_ONLY_CLASSES: [&str; 5] =
+    ["chart", "image", "header_image", "footer_image", "seal"];
 
 /// Reassemble `(class, recognized_text)` blocks (already in reading order) into one markdown doc.
 /// Title classes get heading prefixes; table/formula text is emitted verbatim (it is already

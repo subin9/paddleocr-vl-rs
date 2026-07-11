@@ -28,13 +28,17 @@ fn drop_nested_matches_python_filter_on_full_corpus() {
     for (stem, page) in &pages {
         let boxes = page["boxes"].as_array().unwrap();
         let orders = page["read_order"].as_array().unwrap();
+        // The predicate is absorber-aware, so the class is load-bearing: a VISUAL_ONLY parent
+        // absorbs nothing and cannot make a child a duplicate.
+        let classes = page["classes"].as_array().unwrap();
         let mut regions: Vec<Region> = boxes
             .iter()
             .zip(orders)
-            .map(|(b, o)| {
+            .zip(classes)
+            .map(|((b, o), c)| {
                 let b = b.as_array().unwrap();
                 Region {
-                    class: "text".into(),
+                    class: c.as_str().unwrap().into(),
                     label: 0,
                     score: 0.9,
                     bbox: std::array::from_fn(|i| b[i].as_f64().unwrap() as f32),

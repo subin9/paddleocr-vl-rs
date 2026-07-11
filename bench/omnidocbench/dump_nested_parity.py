@@ -27,9 +27,12 @@ def main():
     pages = parse_logs()
     dump, n_regions, n_dropped = {}, 0, 0
     for stem, regions in sorted(pages.items()):
-        drop = nested_indices(regions, 0.8)
+        # absorber_aware: matches the shipped Rust guard (a VISUAL_ONLY parent absorbs nothing, so it
+        # cannot make a child a duplicate). The predicate is class-sensitive, so dump the class too.
+        drop = nested_indices(regions, 0.8, absorber_aware=True)
         dump[stem] = {
             "boxes": [r[2] for r in regions],
+            "classes": [r[1] for r in regions],
             "read_order": [r[0] for r in regions],
             "keep": [i for i in range(len(regions)) if i not in drop],
         }

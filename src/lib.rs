@@ -91,19 +91,30 @@ fn intersection(a: &[f32; 4], b: &[f32; 4]) -> f32 {
 /// OmniDocBench v1.5 that duplicated 236k chars across 449 pages; dropping the children measured
 /// text-edit page_avg 0.0797 -> 0.0725 and TEDS 83.31 -> 83.36 under the official scorer.
 ///
-/// Class-agnostic on purpose: the same containment shape is the bug for every class pair, so one
-/// geometric guard beats a per-class allowlist. STRICTLY larger breaks the symmetry of two
-/// near-identical boxes -- without it a duplicate pair would delete BOTH.
+/// STRICTLY larger breaks the symmetry of two near-identical boxes -- without it a duplicate pair
+/// would delete BOTH.
+///
+/// Only a parent whose own text REACHES the markdown may absorb a child. A container in
+/// [`assemble::VISUAL_ONLY_CLASSES`] is never emitted, so it absorbs nothing: its "child" is not a
+/// duplicate, it is the only copy, and dropping it deletes the content outright. The class-agnostic
+/// version of this guard did exactly that on 15 corpus regions (`text` inside `image`) -- an
+/// interaction of two independently-correct policies, worst page `newspaper_Daily Mirror…page_029`
+/// text-edit 0.186 -> 0.506. Absorber-awareness restores it to 0.186. Aggregate effect is neutral
+/// (page_avg 0.0725 -> 0.0722, inside the pre-registered +-0.0005 noise band); it ships because
+/// deleting a page's only copy of its text is a bug regardless of score.
 pub fn drop_nested(regions: &mut Vec<Region>) {
     let boxes: Vec<[f32; 4]> = regions.iter().map(|r| r.bbox).collect();
+    let absorbs: Vec<bool> = regions
+        .iter()
+        .map(|r| !assemble::VISUAL_ONLY_CLASSES.contains(&r.class.as_str()))
+        .collect();
     let mut keep = Vec::with_capacity(boxes.len());
     for (i, b) in boxes.iter().enumerate() {
         let a = area(b);
         let nested = a > 0.0
-            && boxes
-                .iter()
-                .enumerate()
-                .any(|(j, o)| i != j && area(o) > a && intersection(b, o) / a >= NEST_CONTAINMENT);
+            && boxes.iter().enumerate().any(|(j, o)| {
+                i != j && absorbs[j] && area(o) > a && intersection(b, o) / a >= NEST_CONTAINMENT
+            });
         keep.push(!nested);
     }
     let mut it = keep.iter();
@@ -233,6 +244,21 @@ mod tests {
         ];
         drop_nested(&mut regions);
         assert_eq!(regions.len(), 2);
+    }
+
+    #[test]
+    fn visual_only_parent_absorbs_nothing_so_child_survives() {
+        // `text` inside `image`: the assembler never emits `image`, so dropping the child would
+        // delete the only copy of that text. The child stays; a real absorber still eats its own.
+        let mut regions = vec![
+            reg("image", [0.0, 0.0, 100.0, 100.0], 0),
+            reg("text", [10.0, 10.0, 30.0, 30.0], 1),
+            reg("text", [200.0, 200.0, 300.0, 300.0], 2),
+            reg("inline_formula", [210.0, 210.0, 230.0, 230.0], 3),
+        ];
+        drop_nested(&mut regions);
+        let kept: Vec<&str> = regions.iter().map(|r| r.class.as_str()).collect();
+        assert_eq!(kept, ["image", "text", "text"]);
     }
 
     #[test]
