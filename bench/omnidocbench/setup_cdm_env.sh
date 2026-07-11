@@ -28,26 +28,27 @@ REPO="$(cd "$HERE/../.." && pwd)"
 #    the CDM template loads xeCJK -- a missing font fails the render outright.)
 sudo apt-get install -y imagemagick ghostscript fonts-noto-cjk
 
-# 2. TeX Live. NOT the distro package: Ubuntu 22.04 ships TeX Live 2021, and CDM's
-#    token colouring emits `\mathcolor[RGB]{...}`, which needs xcolor >= 3.0 /
-#    LaTeX kernel >= 2022-06 (mathcolor.ltx). On TL2021 `\mathcolor` is UNDEFINED --
-#    and under -interaction=nonstopmode that does not fail the build: xelatex drops
-#    the colour and emits a valid, correct-looking BLACK pdf. Zero coloured pixels
-#    => zero bboxes => F1=0.0 for every formula, with no error anywhere. (Backporting
-#    xcolor 3.02 into TEXMFHOME does not work either: the 2021 kernel's rollback then
-#    demands xcolor-2022-06-12.sty.) Upstream TL carries xcolor 3.x + mathcolor.ltx
-#    natively -- this is the environment CDM's own README assumes.
-if ! kpsewhich mathcolor.ltx >/dev/null 2>&1; then
+# 2. xcolor >= 3.0, into TEXMFHOME. CDM's token colouring emits `\mathcolor[RGB]{...}`
+#    (latex_processor.token_add_color_RGB), which the distro's xcolor 2.x does not
+#    define. The failure is SILENT: under -interaction=nonstopmode an undefined macro
+#    does not fail the build -- xelatex drops the colour and emits a valid,
+#    correct-looking BLACK pdf. Zero coloured pixels => zero bboxes => F1=0.0 on every
+#    formula, with no error anywhere (see the bare `except` in the header).
+#    The CTAN zip ships xcolor.sty (3.x) AND xcolor-2022-06-12.sty. BOTH are required:
+#    the second is the dated rollback file the kernel demands when a package declares a
+#    release newer than the running format. Copying only xcolor.sty is what makes this
+#    look like it needs a full upstream TeX Live -- it does not.
+#    (The distro's stable kernel is the one to use. Pairing xcolor 3.x with the
+#    latex-dev kernel, /usr/bin/xelatex-dev, breaks instead: l3keys ".code is unknown".)
+if ! kpsewhich xcolor-2022-06-12.sty >/dev/null 2>&1; then
   TMP=$(mktemp -d)
-  curl -sSL -o "$TMP/install-tl.tar.gz" \
-    https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz
-  tar xzf "$TMP/install-tl.tar.gz" --strip-components=1 -C "$TMP"
-  sudo "$TMP/install-tl" --no-interaction --scheme=medium
+  curl -sSL -o "$TMP/xcolor.zip" https://mirrors.ctan.org/macros/latex/contrib/xcolor.zip
+  ( cd "$TMP" && unzip -qo xcolor.zip && cd xcolor && latex -interaction=nonstopmode xcolor.ins >/dev/null )
+  XCDIR="$(kpsewhich -var-value TEXMFHOME)/tex/latex/xcolor"
+  mkdir -p "$XCDIR"
+  cp "$TMP/xcolor/xcolor.sty" "$TMP/xcolor/xcolor-2022-06-12.sty" "$XCDIR/"
   rm -rf "$TMP"
 fi
-# Put the upstream TL ahead of the distro one.
-TLBIN=$(echo /usr/local/texlive/*/bin/x86_64-linux | tr ' ' '\n' | tail -1)
-export PATH="$TLBIN:$PATH"
 
 # 3. `magick` shim. latex2bbox_color.py:99 calls `magick`, the ImageMagick 7 CLI;
 #    Ubuntu 22.04 ships ImageMagick 6, whose binary is `convert` (identical flags for
@@ -98,5 +99,5 @@ PYTHONPATH=. "$HERE/scorer-venv/bin/python" "$HERE/cdm_smoke.py"
 
 echo
 echo "CDM env OK. Score with:"
-echo "  cd $REPO/bench/OmniDocBench && PATH=$TLBIN:\$PATH \\"
-echo "    ../omnidocbench/scorer-venv/bin/python pdf_validation.py -c ../omnidocbench/data/subsets/cdm1651.end2end.yaml"
+echo "  cd $REPO/bench/OmniDocBench && \\"
+echo "    PYTHONPATH=. ../omnidocbench/scorer-venv/bin/python pdf_validation.py -c ../omnidocbench/data/subsets/cdm1651.end2end.yaml"
