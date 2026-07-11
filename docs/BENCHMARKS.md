@@ -334,12 +334,72 @@ This slice proves the integration AND the visual-skip fix; it is NOT the accurac
 
 ## Our measured scores
 
+### HEADLINE (§2.4, 2026-07-12) — the benchmark is 1355 pages, not 1651. On it, the port is at parity.
+
+**Read this before any number below it.** Every score in the sections that follow was computed over
+all **1651** pages in the shipped `OmniDocBench.json`. That file is a **superset of the benchmark**:
+it bundles 296 pages belonging to three *adversarial* diagnostic subsets, tagged in the GT's own
+`page_attribute.subset` field:
+
+| `subset` tag | pages | in the published leaderboard? |
+|---|---|---|
+| `v1.5` | **1355** | **yes — this IS the benchmark** |
+| `equation_hard` | 100 | no |
+| `layout_hard` | 99 | no |
+| `table_hard` | 97 | no |
+| shipped JSON total | 1651 | — |
+
+Evidence it is 1355, not 1651: the official README states "**This benchmark includes 1355 PDF pages**"
+(twice: `README.md:13`, `:88`, eval pin `59b103c`), and the v1.5 changelog's own arithmetic closes
+exactly — v1.0 was 981 pages, v1.5 "**Added 374 new pages**", and 981 + 374 = **1355**, the precise
+count carrying the `v1.5` tag. The three `*_hard` sets ride along in the same JSON as extra
+attribute-tagged diagnostics.
+
+This mattered enormously because **the hard pages are wildly over-represented exactly where they
+hurt**: they are 18% of pages overall but **29% of all formula-bearing pages** (91 of 313) and **21%
+of all table-bearing pages** (97 of 458). Scoring the superset therefore dragged the formula and
+table numbers down hard, and every "gap" we chased was partly this.
+
+No re-run was needed to correct it: the official scorer already emits a per-attribute breakdown using
+the **identical reduction** as the headline (`metrics/show_result.py:133` — `page_avg`: mean within a
+page, then mean across pages, grouped by attribute). So its `subset: v1.5` row *is* the leaderboard
+number restricted to the benchmark's 1355 pages. Reading that row off the runs we already have:
+
+| metric | **ours — `subset: v1.5` (1355 pg) LIKE-FOR-LIKE** | ours — all 1651 (superset) | published PaddleOCR-VL-1.5 | verdict |
+|---|---|---|---|---|
+| text Edit ↓          | **0.0328** | 0.0368 | 0.035 | **PARITY** (marginally better) |
+| table TEDS ↑         | **92.75**  | 90.36  | 92.76 | **PARITY** (−0.01) |
+| table TEDS-S ↑       | **95.95**  | 94.33  | 95.79 | **PARITY** (+0.16) |
+| reading-order Edit ↓ | **0.0415** | 0.0434 | 0.042 | **PARITY** (marginally better) |
+| formula CDM ↑        | **91.77**  | 80.90  | 94.21 | **GAP −2.44** ← the one real divergence |
+| **Overall** ↑        | **93.75**  | —      | 94.50 | **−0.75**, entirely from formula |
+
+`Overall = ((1 − TextEdit)×100 + TableTEDS + FormulaCDM) / 3`, the scorer's own definition
+(`README.md:414`). Ours: `((1−0.0328)×100 + 92.75 + 91.77)/3 = 93.75`.
+
+**The 1355-page reading is also what the data independently corroborates.** On that slice *three*
+metrics land within noise of published *simultaneously* (TEDS 92.75 vs 92.76, TEDS-S 95.95 vs 95.79,
+RO 0.0415 vs 0.042). If the leaderboard were really scored on 1651, a faithful port would have to
+match there — and we would be 2.4 TEDS points off while coincidentally landing dead-on across three
+metrics on an arbitrary 1355-page subset. That is not a coincidence a wrong hypothesis produces.
+
+**Caveat, stated plainly:** the leaderboard does not publish its page list, so "the benchmark = the
+1355 `v1.5`-tagged pages" is an *inference* from the README, the changelog arithmetic, and the
+three-metric agreement above — not a statement we can read off an official manifest. Both columns are
+therefore printed above; nothing is hidden. Every downstream section still carries its original
+1651-page numbers, which are the **pessimistic** ones.
+
+**Verdict per metric:** text **PRESERVED** · reading-order **PRESERVED** · table **PRESERVED** ·
+formula **GAP of −2.44 CDM** (the only remaining divergence; see §2.4 below).
+
+### Historical (1651-superset scoring — superseded by the table above, kept for audit)
+
 | run | Overall | Text-Edit | Formula(metric) | Table-TEDS / -S | ReadOrder-Edit | verdict |
 |-----|---------|-----------|-------------|------------|----------------|---------|
 | 5-page slice (visual-skip) | n/a (n=5) | 0.077 pg-avg | edit 0.110 (no CDM env) | 0.997 / — (n=2) | 0.000 | plumbing + skip OK |
 | **stratified subset (n=150)** | **84.1 (Edit-proxy)** | **0.0709** pg-avg | **edit 0.2724** (NOT CDM) | **0.8659 / 0.9112** | **0.0919** | **SANE — proceed to full** |
-| **full v1.5 (1651)** | **≤ 91.80** (see below) | **0.0797** pg-avg | edit 0.2559 (**NOT CDM**) | **0.8336 / 0.8761** | **0.0929** | **DIVERGES** |
-| **paper reference (full 1651)** | 94.50 | 0.035 | CDM 94.21 | 92.76 / 95.79 | 0.042 | target |
+| **full 1651 superset** | **≤ 91.80** (see below) | **0.0797** pg-avg | edit 0.2559 (**NOT CDM**) | **0.8336 / 0.8761** | **0.0929** | DIVERGES — **artifact of the superset + 2 assembly bugs since fixed** |
+| **paper reference** | 94.50 | 0.035 | CDM 94.21 | 92.76 / 95.79 | 0.042 | target (on **1355**, not 1651) |
 
 Speed table (secondary; Rust GPU-bf16 vs transformers floor, per-stage) also PENDING — see the
 existing latency sections above for the single-crop microbenchmarks already measured.
@@ -593,6 +653,52 @@ the work the published OCR-block task never has to do, because it is handed the 
 is therefore **layout/reading-order-shaped, not recognition-shaped**, consistent with the error budget
 (layout 53.4% of edits; in-crop substitutions only 8.1%). This is the target for any further layout
 work; it is *not* evidence of a VLM port defect.
+
+### Formula: scored with CDM, the published metric (§2.4)
+
+The published formula number is **CDM** (Character Detection Matching), not edit distance. Our earlier
+0.2490 was edit distance and was always labelled NOT-COMPARABLE; it is now retired as a proxy. CDM is
+measured directly.
+
+**Result (official scorer, CDM metric, `display_formula`):**
+
+| | ours — `subset: v1.5` (1355 pg, like-for-like) | ours — all 1651 | published |
+|---|---|---|---|
+| formula **CDM** ↑ | **91.77** | 80.90 | **94.21** |
+
+**−2.44 CDM against published — the one metric where the port does not reach parity.** The 1651-page
+figure (80.90) is *not* the comparable one: 91 of the 313 formula-bearing pages in that JSON come from
+`equation_hard` (CDM 57.21), a diagnostic subset the leaderboard excludes.
+
+**How it was scored.** No scorer modification — CDM is a config switch the official harness already
+ships (`METRIC_REGISTRY` carries `CDM`; `configs/end2end.yaml` merely defaults to `CDM_plain`).
+Config `data/subsets/cdm1651.end2end.yaml`, `display_formula: [Edit_dist, CDM]`, same raw GT, same
+`quick_match`, preds = the shipped default. Env fix is in `setup_cdm_env.sh` (`3c6740e0`).
+
+**The gate that makes this number trustworthy.** CDM renders LaTeX to a raster and recovers per-token
+boxes by *exact pixel-colour* lookup, so a broken TeX env silently returns **CDM ≈ 0** through a bare
+`except` — a fabricated, *pessimistic* self-own that every downstream `Overall` would inherit. So CDM
+is gated behind `cdm_smoke.py` (`d32e5394`), which must pass before any score is believed:
+
+```
+identical formula  F1 = 1.0   (expect 1.0)          <- renderer+matcher work end-to-end
+truncated formula  F1 = 0.6   (expect 0 < F1 < 1)   <- it is really comparing, not stubbing a constant
+PASS: CDM renders and discriminates -> CDM scores are trustworthy.
+```
+
+The env fix was small in the end: OmniDocBench's `\mathcolor` needs **xcolor 3.x**, and the CTAN zip
+ships *both* `xcolor.sty` and its rollback `xcolor-2022-06-12.sty`. Copying only the first into
+`TEXMFHOME` triggers the 2021 kernel's rollback (`File 'xcolor-2022-06-12.sty' not found`) and makes
+this look like it needs a 5 GB TeX Live install; with both files the **stock distro `xelatex`**
+compiles with 0 undefined control sequences and emits exact `(255,0,0)`/`(0,255,0)` pixels.
+
+**Internal control.** `Edit_dist` was scored in the same run and landed on **0.248989** — the
+already-scored 0.2490 — proving the CDM run scored the pipeline we think it did, not a stale or
+mismatched prediction set.
+
+**The gap is real and is NOT a scoring artifact** (the gate rules that out). It is not yet root-caused;
+worst CDM slices are `fuzzy_content` 0.307, `equation_hard` 0.572, `with_watermark` 0.564 — i.e.
+degraded//low-contrast inputs. Logged to FUTURE_WORK rather than hand-waved.
 
 ## Caveats
 
