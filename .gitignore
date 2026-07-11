@@ -31,7 +31,14 @@ logs/
 # OmniDocBench (research-only dataset + cloned eval repo — never commit)
 # Our repro scripts/configs/results live in bench/omnidocbench/ and ARE committed.
 bench/OmniDocBench/
-bench/omnidocbench/data/
+# data/ holds the dataset itself (never commit) — but the scorer configs under data/subsets/ are
+# OURS and are the only way to reproduce a score, so re-include just those. Git cannot re-include a
+# file whose parent DIRECTORY is excluded, hence `data/*` + a re-included `subsets/` rather than
+# `data/`.
+bench/omnidocbench/data/*
+!bench/omnidocbench/data/subsets/
+bench/omnidocbench/data/subsets/*
+!bench/omnidocbench/data/subsets/*.yaml
 bench/omnidocbench/preds/
 bench/omnidocbench/work/
 bench/omnidocbench/work_*/

@@ -1,0 +1,13 @@
+{
+  "end2end_eval": {
+    "metrics": {
+      "display_formula": { "metric": ["Edit_dist", "CDM"] }
+    },
+    "dataset": {
+      "dataset_name": "end2end_dataset",
+      "ground_truth": { "data_path": "/home/sb/mistral-paddle/paddleocr-vl-rs/bench/omnidocbench/data/OmniDocBench.json" },
+      "prediction":   { "data_path": "/home/sb/mistral-paddle/paddleocr-vl-rs/bench/omnidocbench/preds/otslhtml1651" },
+      "match_method": "quick_match"
+    }
+  }
+}
