@@ -2,6 +2,52 @@
 
 Honest roadmap. Each item lists why it is valuable and what the hard part actually is.
 
+## Formula CDM −2.44 vs published — the one metric not at parity
+
+**Why:** every other benchmark metric reaches published parity (text, reading-order, table); formula
+CDM is **91.77 vs 94.21** and is therefore the whole of the −0.75 `Overall` deficit. It is **not** a
+scoring artifact — the CDM renderer is gated by `cdm_smoke.py`, which proves it discriminates
+(identical formula F1 = 1.0, truncated F1 = 0.6) rather than silently returning 0. **Hard part:** the
+worst slices are *degraded inputs* (`fuzzy_content` 0.307, `with_watermark` 0.564), which points at
+the crop/preprocessing path (resize, interpolation, normalization) rather than the LM — but the
+cross-stack A/B complicates that story: llama.cpp, with an entirely different image pipeline, scores
+formula edit-distance **worse** than us (0.1927 vs 0.1833), not better. So a naive "our preprocessing
+is lossy" hypothesis does not survive first contact. Next probe: score the *reference transformers*
+implementation's formula CDM on the same crops — that separates "our crops are worse" from "this
+0.9B model is simply weak on degraded formulas".
+
+## Cross-stack residual: llama.cpp is −0.30 TEDS / +0.0094 formula-edit vs the Rust port
+
+**Why:** the two bf16 stacks agree to 0.0003 on text and 0.0002 on reading order — so the table and
+formula deltas, while small, are the *only* place two faithful implementations visibly disagree, and
+that makes them a cheap probe into which stack's image path is lossier. **Hard part:** attribution
+needs a per-crop diff (dump both stacks' text for the same table/formula crops and look at where they
+diverge), not another aggregate score. Deliberately left **unattributed** in BENCHMARKS.md rather than
+hand-waved to "numeric noise".
+
+## Root-cause the runaway generation (why does a crop never emit EOS?)
+
+**Why:** `magazine_TheEconomist.2023.12.02_page_062` reproducibly generated until it was killed —
+hours, pre-cap. It is now *bounded* (`MAX_NEW_TOKENS=2048` → the page completes in 45s, 6339 bytes)
+and the 120s per-region + 600s per-page guards catch the class in general, but **bounding is not
+explaining**: something about that region makes a 0.9B model refuse to stop, and 8 crops across the
+full run still hit the 120s guard and get **empty text** recorded (a small, real accuracy cost the
+port pays and llama.cpp — 0 trips — does not). **Hard part:** the interesting question is whether the
+degenerate loop reproduces in the *reference* transformers implementation on the same crop. If yes it
+is a model property (and the guard is the right answer forever); if no, it is a port bug in sampling
+or EOS handling and the guard is masking it. That single experiment is the whole task — do it before
+touching any generation code.
+
+## Purge the accidentally-committed venv from git history (before any push)
+
+**Why:** `bench/omnidocbench/paddle-venv/` (19,585 files, 1.2GB of PaddlePaddle/modelscope wheels and
+binaries) was committed in `512f17b8` — it was added before the `.gitignore` rule covering it landed.
+`e2ac8bf3` stops tracking it, but **`git rm --cached` does not remove the blobs from history**; they
+are still in every clone's object store (`.git` is 361MB). **Hard part:** none technically
+(`git filter-repo --path bench/omnidocbench/paddle-venv --invert-paths`), but it **rewrites every
+commit SHA**, so it must happen before the repo is ever pushed or shared — which is exactly why it is
+recorded here instead of being done silently mid-benchmark.
+
 ## DONE — Skip visual-only regions in assembly (`VISUAL_ONLY_CLASSES`, measured §2.3-step-1)
 
 Implemented: `assemble_markdown` drops `chart`/`image`/`header_image`/`footer_image`/`seal`. In-session

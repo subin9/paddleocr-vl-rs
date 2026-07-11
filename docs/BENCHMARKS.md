@@ -763,6 +763,52 @@ unresponsive (llama-server's 8 GB default prompt cache, `-cram`, on a 15.9 GB bo
 version would have booked an infrastructure stall as a *llama.cpp accuracy miss that never happened* —
 the guard's job is to make that distinction visible, and the fix is to re-run the page, not to keep it.
 
+### Speed, honestly (§2.7) — llama.cpp is ~3.2x faster per page, and the port's edge is not throughput
+
+**Secondary result, and it does not flatter the port.** Same box, same 118-page stratified sample
+(`speed120.stems`), same crops, bf16 both sides, K=1 serial recognition by design.
+
+**The first number here was wrong, and the reason it was wrong matters.** The Rust full-run timings
+(median 17s/page) were taken on the box that was *later* found to be thrashing — rust-analyzer holding
+6.4GB and swap at 100% (see PROGRESS 2026-07-12). llama.cpp's were taken after that cleanup. Publishing
+17s vs 2.2s would have been a **7.7x speedup manufactured out of a memory leak**. So the Rust pipeline
+was re-run on the cleaned box, with llama-server stopped, over the same pages:
+
+| crops/page | n | Rust end-to-end | llama.cpp + layout | speedup |
+|---|---|---|---|---|
+| 1–5 | 11 | 4.0s | 1.3s | 3.1x |
+| 6–10 | 22 | 6.5s | 2.1s | 3.1x |
+| 11–15 | 22 | 9.5s | 2.7s | 3.5x |
+| 16–25 | 22 | 14.0s | 3.3s | 4.2x |
+| 26–40 | 12 | 19.5s | 5.1s | 3.8x |
+| 41–200 | 14 | 35.5s | 12.8s | 2.8x |
+| **all** | **103** | **10.0s** | **3.1s** | **3.2x** |
+
+Per-page medians over the 103 pages both stacks timed on the clean box. Rust's honest median is
+**10.0s**, not the 17s the degraded run reported.
+
+**Per-stage split (measured, `stage_split.py`), so the 3.2x is attributed and not just quoted:**
+
+| stage | cost | who pays it |
+|---|---|---|
+| ONNX layout (PP-DocLayoutV3) | **0.88s**/page | both — llama.cpp *reuses the Rust run's crops*, so it never re-runs the detector; **0.88s is added back to every llama.cpp page above**, or the comparison would be a lie |
+| process spawn + bf16 model load | **1.76s**/page | **Rust only** — `run_pipeline.sh` invokes the recognize binary once per *page*. A harness artifact, not a port property (load-once mode → FUTURE_WORK) |
+| recognition | **0.52s/crop** (Rust) vs **0.12s/crop** (llama.cpp) | the real gap |
+
+**The gap is kernels, not harness.** Removing the per-page model reload entirely (the load-once mode)
+would take a median page from 10.0s to ~8.2s — still ~2.6x slower than llama.cpp. The **0.52 vs 0.12
+s/crop** is where the time actually goes, and it is consistent with the "Honest residual" section
+above: candle's dense GEMM/MLP on the vision encoder is the ceiling, and that is an upstream maturity
+gap, not a bug in this repo.
+
+**What this is not.** Not a SOTA-speed claim, and not a claim the port is fast. On this box, for this
+workload, **llama.cpp wins on throughput and we report that plainly**. The port's actual edge is what
+it was always claimed to be: a **Python-free single static binary** (no torch, no venv, no CUDA-python
+stack) that reproduces the model's accuracy — which §2.6 now shows it does, to 0.0003 edit distance.
+
+The transformers reference was **not** run over the full page set (only the single-crop latency
+microbenchmarks earlier in this doc). Stated as a gap rather than estimated.
+
 ## Caveats
 
 - Different stacks (candle/mistral.rs vs PyTorch/transformers): kernels, memory layout, no quant.
