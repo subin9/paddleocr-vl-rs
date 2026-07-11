@@ -1,0 +1,327 @@
+DATASET_REGISTRY:  ['recogition_text_dataset', 'omnidocbench_single_module_dataset', 'recogition_formula_dataset', 'recogition_table_dataset', 'end2end_dataset', 'recogition_end2end_base_dataset', 'recogition_end2end_table_dataset', 'detection_dataset', 'detection_dataset_simple_format', 'md2md_dataset']
+METRIC_REGISTRY:  ['TEDS', 'BLEU', 'METEOR', 'Edit_dist', 'CDM', 'CDM_plain']
+EVAL_TASK_REGISTRY:  ['detection_eval', 'end2end_eval', 'recogition_eval']
+
+  0%|                                                                                                              | 0/1651 [00:00<?, ?it/s]
+
+Processing book_en_国外数学教材-An Excursion through Elementary Mathematics（初等数学漫游）-An excursion through elementary mathematics, Vol
+Processing book_en_国外数学教材-An Excursion through Elementary Mathematics（初等数学漫游）-An excursion through elementary mathematics, Vol
+Processing book_en_国外数学教材-An Excursion through Elementary Mathematics（初等数学漫游）-An excursion through elementary mathematics, Vol
+Processing book_en_国外数学教材-An Excursion through Elementary Mathematics（初等数学漫游）-An excursion through elementary mathematics, Vol
+Processing book_en_国外数学教材-An Excursion through Elementary Mathematics（初等数学漫游）-An excursion through elementary mathematics, Vol
+Processing book_en_国外数学教材-An Excursion through Elementary Mathematics（初等数学漫游）-An excursion through elementary mathematics, Vol
+Processing book_en_国外数学教材-An Excursion through Elementary Mathematics（初等数学漫游）-An excursion through elementary mathematics, Vol
+Processing book_en_国外数学教材-An Excursion through Elementary Mathematics（初等数学漫游）-An excursion through elementary mathematics, Vol
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语上册_课本_人教新起点英语5A电子课本_page_011.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点四年级英语上册_课本_人教新起点英语4A电子课本_page_044.md: 
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET写作25分 【10讲 褚连一】_第05讲第五课写作Part
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET写作25分 【10讲 褚连一】_第05讲第五课写作Part
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语上册_课本_人教新起点英语5A电子课本_page_001.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语下册_课本_人教新起点英语5B电子课本_page_046.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语下册_课本_人教新起点英语5B电子课本_page_076.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语上册_课本_人教新起点英语5A电子课本_page_008.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点四年级英语下册_课本_人教新起点英语4B电子课本_page_047.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语上册_课本_人教新起点英语5A电子课本_page_004.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点四年级英语下册_课本_人教新起点英语4B电子课本_page_016.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语上册_课本_人教新起点英语5A电子课本_page_060.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语上册_课本_人教新起点英语5A电子课本_page_055.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点四年级英语下册_课本_人教新起点英语4B电子课本_page_017.md: 
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET写作25分 【10讲 褚连一】_第08讲第八课写作Part
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点四年级英语下册_课本_人教新起点英语4B电子课本_page_048.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点四年级英语下册_课本_人教新起点英语4B电子课本_page_087.md: 
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET写作25分 【10讲 褚连一】_第09讲第九课写作Part
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET阅读25分【10讲 褚连一 】_第01讲第一课阅读题型
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语上册_课本_人教新起点英语5A电子课本_page_006.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语下册_课本_人教新起点英语5B电子课本_page_011.md: 
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET写作25分 【10讲 褚连一】_第04讲第四课KET分类 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语下册_课本_人教新起点英语5B电子课本_page_027.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语下册_课本_人教新起点英语5B电子课本_page_034.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语下册_课本_人教新起点英语5B电子课本_page_034.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语下册_课本_人教新起点英语5B电子课本_page_036.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点四年级英语上册_课本_人教新起点英语4A电子课本_page_091.md: 
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET口语25分【10 褚连一】_第04讲第四课口语部分Par
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语上册_课本_人教新起点英语5A电子课本_page_056.md: 
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET写作25分 【10讲 褚连一】_第10讲第十课写作Part
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语下册_课本_人教新起点英语5B电子课本_page_043.md: 
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点五年级英语上册_课本_人教新起点英语5A电子课本_page_010.md: 
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET写作25分 【10讲 褚连一】_第10讲第十课写作Part
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET写作25分 【10讲 褚连一】_第10讲第十课写作Part
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET口语25分【10 褚连一】_第09讲第九课口语部分Par
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点四年级英语下册_课本_人教新起点英语4B电子课本_page_043.md: 
+Processing color_textbook_zhonggaokao_小学_KET听说读写逐项突破_KET听说读写逐项突破之轻松搞定KET口语25分【10 褚连一】_第02讲第二课口语部分Par
+Processing color_textbook_zhonggaokao_小学_13.人教新起点英语（4-5年级）_人教新起点四年级英语上册_课本_人教新起点英语4A电子课本_page_072.md: 
+!!!WARNING: No prediction for newspaper_9bb9e05d38b370251a4b0a8d070d1d55_1.jpg
+!!!WARNING: No prediction for magazine_TheEconomist.2024.03.09_page_079.png
+###### Process:  otslhtml1651_quick_match
+【text_block】
+Edit_dist:
+---------------  ---------
+ALL_page_avg     0.0368179
+edit_whole       0.0450291
+edit_sample_avg  0.0404414
+---------------  ---------
+====================================================================================================
+----Anno Attribute---------------
+sample_count:
+
+====================================================================================================
+Edit_dist:
+--------------------------------  ----------
+ALL                               0.0368179
+None                              0.0244632
+colorful_backgroud                0.0373935
+data_source: PPT2PDF              0.0225511
+data_source: academic_literature  0.0198626
+data_source: book                 0.0340192
+data_source: colorful_textbook    0.0631526
+data_source: exam_paper           0.0454883
+data_source: historical_document  0.0663345
+data_source: magazine             0.0376631
+data_source: newspaper            0.0510516
+data_source: note                 0.0517919
+data_source: research_report      0.014386
+fuzzy_content                     0.0431562
+fuzzy_scan                        0.0416692
+geometric_deformation             0.0364414
+handwriting                       0.446958
+language: en_ch_mixed             0.0369158
+language: english                 0.0254942
+language: other                   0.00206945
+language: simplified_chinese      0.0468708
+language: traditional_chinese     0.127162
+layout: 1andmore_column           0.0258731
+layout: double_column             0.0287496
+layout: other_layout              0.05952
+layout: single_column             0.0297119
+layout: three_column              0.0485551
+subset: equation_hard             0.0731337
+subset: layout_hard               0.0664393
+subset: table_hard                0.0178318
+subset: v1.5                      0.0327617
+text_L-shaped_wrap                0.0750127
+text_O-shaped_wrap                0.169154
+text_embedded_in_image            0.10559
+transparent_pages                 0.0735588
+watermark                         0.0453108
+with_watermark                    0.0425202
+--------------------------------  ----------
+====================================================================================================
+【display_formula】
+Edit_dist:
+---------------  --------
+ALL_page_avg     0.248989
+edit_whole       0.338575
+edit_sample_avg  0.229035
+---------------  --------
+====================================================================================================
+----Anno Attribute---------------
+sample_count:
+
+====================================================================================================
+Edit_dist:
+--------------------------------  ---------
+ALL                               0.248989
+None                              0.16889
+colorful_backgroud                0.228545
+data_source: PPT2PDF              0.252518
+data_source: academic_literature  0.317288
+data_source: book                 0.27407
+data_source: colorful_textbook    0.270703
+data_source: exam_paper           0.150614
+data_source: note                 0.394149
+fuzzy_content                     0.498077
+fuzzy_scan                        0.394631
+geometric_deformation             0.243665
+handwriting                       0.0315125
+language: en_ch_mixed             0.351931
+language: english                 0.23775
+language: simplified_chinese      0.276484
+layout: 1andmore_column           0.13847
+layout: double_column             0.171645
+layout: other_layout              0.303767
+layout: single_column             0.285611
+layout: three_column              0.0233302
+subset: equation_hard             0.399164
+subset: layout_hard               0.26
+subset: table_hard                0.15278
+subset: v1.5                      0.183299
+text_L-shaped_wrap                0.140436
+text_O-shaped_wrap                0.347826
+watermark                         0.251379
+with_watermark                    0.31204
+--------------------------------  ---------
+====================================================================================================
+【table】
+TEDS:
+---  -------
+all  0.89785
+---  -------
+====================================================================================================
+TEDS_structure_only:
+---  --------
+all  0.939152
+---  --------
+====================================================================================================
+Edit_dist:
+---------------  ---------
+ALL_page_avg     0.0801334
+edit_whole       0.147105
+edit_sample_avg  0.0811601
+---------------  ---------
+====================================================================================================
+----Anno Attribute---------------
+sample_count:
+
+====================================================================================================
+Edit_dist:
+--------------------------------  ---------
+ALL                               0.0801334
+None                              0.0829641
+colorful_backgroud                0.0659593
+data_source: PPT2PDF              0.0715646
+data_source: academic_literature  0.158915
+data_source: book                 0.0411027
+data_source: colorful_textbook    0.0583764
+data_source: exam_paper           0.0268754
+data_source: magazine             0.0897515
+data_source: newspaper            0.126833
+data_source: note                 0.0859605
+data_source: research_report      0.0648141
+fuzzy_scan                        0.0100831
+geometric_deformation             0.069944
+language: en_ch_mixed             0.0816227
+language: english                 0.121193
+language: simplified_chinese      0.0571185
+language: traditional_chinese     0.126359
+layout: 1andmore_column           0.055845
+layout: double_column             0.0591164
+layout: other_layout              0.118232
+layout: single_column             0.0797028
+layout: three_column              0.041399
+subset: equation_hard             0.170842
+subset: layout_hard               0.0630562
+subset: table_hard                0.164142
+subset: v1.5                      0.0567896
+watermark                         0.0311363
+with_watermark                    0.176358
+--------------------------------  ---------
+====================================================================================================
+TEDS:
+--------------------------------  --------
+ALL                               0.903563
+None                              0.924364
+colorful_backgroud                0.893078
+data_source: PPT2PDF              0.969027
+data_source: academic_literature  0.822179
+data_source: book                 0.939234
+data_source: colorful_textbook    0.957454
+data_source: exam_paper           0.962778
+data_source: magazine             0.82211
+data_source: newspaper            0.851145
+data_source: note                 0.863725
+data_source: research_report      0.914192
+fuzzy_scan                        0.984581
+geometric_deformation             0.991619
+language: en_ch_mixed             0.91529
+language: english                 0.867
+language: simplified_chinese      0.924835
+language: traditional_chinese     0.783041
+layout: 1andmore_column           0.930629
+layout: double_column             0.933175
+layout: other_layout              0.85655
+layout: single_column             0.904038
+layout: three_column              0.968012
+subset: equation_hard             0.869084
+subset: layout_hard               0.900264
+subset: table_hard                0.817957
+subset: v1.5                      0.927493
+watermark                         0.970171
+with_watermark                    0.804607
+--------------------------------  --------
+====================================================================================================
+TEDS_structure_only:
+--------------------------------  --------
+ALL                               0.943345
+None                              0.960979
+colorful_backgroud                0.97328
+data_source: PPT2PDF              0.99359
+data_source: academic_literature  0.891266
+data_source: book                 0.983445
+data_source: colorful_textbook    0.982081
+data_source: exam_paper           0.98603
+data_source: magazine             0.96493
+data_source: newspaper            0.911452
+data_source: note                 0.89179
+data_source: research_report      0.938006
+fuzzy_scan                        1
+geometric_deformation             1
+language: en_ch_mixed             0.950135
+language: english                 0.921637
+language: simplified_chinese      0.956506
+language: traditional_chinese     0.851279
+layout: 1andmore_column           0.968034
+layout: double_column             0.970741
+layout: other_layout              0.922601
+layout: single_column             0.939166
+layout: three_column              1
+subset: equation_hard             1
+subset: layout_hard               0.991225
+subset: table_hard                0.879807
+subset: v1.5                      0.959489
+watermark                         0.984091
+with_watermark                    0.842457
+--------------------------------  --------
+====================================================================================================
+【reading_order】
+Edit_dist:
+---------------  ---------
+ALL_page_avg     0.0434055
+edit_whole       0.0938502
+edit_sample_avg  0.0434055
+---------------  ---------
+====================================================================================================
+----Anno Attribute---------------
+sample_count:
+
+====================================================================================================
+Edit_dist:
+--------------------------------  ---------
+ALL                               0.0434055
+None                              0.040128
+colorful_backgroud                0.0446161
+data_source: PPT2PDF              0.0218377
+data_source: academic_literature  0.0117145
+data_source: book                 0.0298189
+data_source: colorful_textbook    0.0638046
+data_source: exam_paper           0.0413754
+data_source: historical_document  0.264965
+data_source: magazine             0.0837502
+data_source: newspaper            0.116483
+data_source: note                 0.0168179
+data_source: research_report      0.0168556
+fuzzy_content                     0.119048
+fuzzy_scan                        0.0542181
+geometric_deformation             0.112899
+handwriting                       0.358974
+language: en_ch_mixed             0.0345771
+language: english                 0.0354076
+language: other                   0
+language: simplified_chinese      0.0519632
+language: traditional_chinese     0.105922
+layout: 1andmore_column           0.031216
+layout: double_column             0.0455313
+layout: other_layout              0.0986997
+layout: single_column             0.0172399
+layout: three_column              0.0880897
+subset: equation_hard             0.0227336
+subset: layout_hard               0.101251
+subset: table_hard                0.0271855
+subset: v1.5                      0.0415398
+text_L-shaped_wrap                0.0454545
+text_O-shaped_wrap                0.4375
+text_embedded_in_image            0.484848
+transparent_pages                 0.0885093
+watermark                         0.0398147
+with_watermark                    0.0149118
+--------------------------------  ---------
+====================================================================================================
