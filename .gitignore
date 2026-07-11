@@ -41,3 +41,4 @@ bench/omnidocbench/scorer-venv/
 bench/omnidocbench/results/*.run.log
 **/OmniDocBench_*/
 bench/omnidocbench/paddle-venv/
+__pycache__/
