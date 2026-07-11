@@ -70,10 +70,19 @@ def intersection(a, b):
     return max(0.0, x1 - x0) * max(0.0, y1 - y0)
 
 
-def nested_indices(regions, thresh):
+# Classes the assembler never emits (assemble.rs::VISUAL_ONLY_CLASSES). A parent of one of these
+# classes absorbs NOTHING into the markdown, so a child nested inside it is not a duplicate -- it is
+# the only copy of that text, and dropping it deletes the content outright.
+VISUAL_ONLY = {"chart", "image", "header_image", "footer_image", "seal"}
+
+
+def nested_indices(regions, thresh, absorber_aware=False):
     """Indices of regions >=thresh contained in a STRICTLY larger region (the parent keeps the child's
     content in its own OCR, so the child is a duplicate). Strictly-larger breaks the symmetry of two
-    near-identical boxes -- without it a duplicate pair would delete both."""
+    near-identical boxes -- without it a duplicate pair would delete both.
+
+    `absorber_aware`: only a parent whose text actually REACHES the markdown can absorb a child, so
+    containers in VISUAL_ONLY don't count as parents (see that constant)."""
     drop = set()
     for i, r in enumerate(regions):
         a = area(r[2])
@@ -81,6 +90,8 @@ def nested_indices(regions, thresh):
             continue
         for j, o in enumerate(regions):
             if i == j or area(o[2]) <= a:
+                continue
+            if absorber_aware and o[1] in VISUAL_ONLY:
                 continue
             if intersection(r[2], o[2]) / a >= thresh:
                 drop.add(i)
@@ -93,11 +104,13 @@ def main():
     thresh = 0.8
     if "--containment" in sys.argv:
         thresh = float(sys.argv[sys.argv.index("--containment") + 1])
+    absorber_aware = "--absorber-aware" in sys.argv
     out_dir.mkdir(parents=True, exist_ok=True)
 
     pages = parse_logs()
     preds = sorted(p.stem for p in (HERE / "preds/full1651").glob("*.md"))
-    print(f"layout logged: {len(pages)} pages; baseline preds: {len(preds)}; containment>={thresh}")
+    print(f"layout logged: {len(pages)} pages; baseline preds: {len(preds)}; containment>={thresh}"
+          f"; absorber_aware={absorber_aware}")
 
     n_pages = n_dropped = n_rows = misaligned = changed = 0
     from collections import Counter
@@ -123,7 +136,7 @@ def main():
             (out_dir / f"{stem}.md").write_text((HERE / f"preds/full1651/{stem}.md").read_text())
             continue
 
-        drop = nested_indices(regions, thresh)
+        drop = nested_indices(regions, thresh, absorber_aware)
         n_pages += 1
         n_rows += len(rows)
         n_dropped += len(drop)
@@ -132,7 +145,8 @@ def main():
         kept = [r for i, r in enumerate(rows) if i not in drop]
         if drop:
             changed += 1
-        filtered = HERE / f"work/{stem}/results_nonest.json"
+        tag = "nonest2" if absorber_aware else "nonest"
+        filtered = HERE / f"work/{stem}/results_{tag}.json"
         filtered.write_text(json.dumps(kept, ensure_ascii=False))
         md = subprocess.run(
             [ASSEMBLE_BIN, "assemble", str(filtered)], capture_output=True, text=True, check=True
