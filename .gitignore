@@ -34,6 +34,7 @@ bench/OmniDocBench/
 bench/omnidocbench/data/
 bench/omnidocbench/preds/
 bench/omnidocbench/work/
+bench/omnidocbench/work_*/
 bench/omnidocbench/*.parquet
 bench/omnidocbench/scorer-venv/
 # pipeline stdout logs echo recognized dataset text (license-encumbered) — scores-only .scorer.log/.json stay committed

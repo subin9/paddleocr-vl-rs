@@ -428,12 +428,15 @@ pub fn run_layout(session: &mut Session, img: &image::RgbImage) -> ort::Result<V
         })
         .collect();
 
-    // `PADDLEOCR_VL_REF_LAYOUT=1` runs the reference pipeline's post-processing instead of the raw
-    // detector's defaults. Opt-in, NOT the default: it is the fix for a confirmed port defect, but
-    // it changes the crops, so it cannot be priced from the existing recognition output the way the
-    // nested/visual A/Bs were -- it needs a full re-run and an official re-score first. The default
-    // stays bit-identical to the scored baseline until that number lands. See `ref_postprocess`.
-    if std::env::var_os("PADDLEOCR_VL_REF_LAYOUT").is_some() {
+    // DEFAULT: the reference pipeline's post-processing. Priced on the full 1651 pages under the
+    // official scorer (`reflayout1651` vs the `nonest2` baseline): text-edit page_avg 0.0722 ->
+    // 0.0428, reading-order 0.0917 -> 0.0500, TEDS 0.8336 -> 0.8364, formula 0.2564 -> 0.2495 --
+    // better on every metric, so the pre-registered rule flips the default. See `ref_postprocess`.
+    //
+    // `PADDLEOCR_VL_RAW_LAYOUT=1` restores the raw detector's own defaults (threshold 0.5, no NMS,
+    // no merge) plus the hand-rolled `drop_nested` it needed. Ablation only -- it is the SCORED
+    // BASELINE the flip was measured against, so it stays runnable and bit-identical.
+    if std::env::var_os("PADDLEOCR_VL_RAW_LAYOUT").is_none() {
         ref_postprocess(&mut regions, ow, oh);
         return Ok(regions);
     }

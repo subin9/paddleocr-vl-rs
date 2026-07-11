@@ -9,6 +9,12 @@
 //! The ONNX graph, the dlopened ONNX Runtime .so, and the golden are not shipped in this repo, so
 //! this test SKIPS gracefully when they are absent (a fresh `cargo test` must not hard-fail). It
 //! runs the real assertion where those artifacts exist locally.
+//!
+//! The golden is the RAW detector's output (an onnxruntime script decoding the graph with the
+//! model's own `inference.yml` defaults). `run_layout` now applies the reference pipeline's
+//! post-processing by default, which deliberately produces DIFFERENT boxes, so this test pins the
+//! raw path -- it checks the tensor decode against onnxruntime, not the layout policy on top.
+//! `ref_postprocess`'s own parity with PaddleX is asserted by `tests/ref_postproc_parity.rs`.
 
 use ort::session::Session;
 use paddleocr_vl_rs::{run_layout, set_default_dylib};
@@ -18,6 +24,12 @@ const BOX_TOL_PX: f32 = 2.0;
 
 #[test]
 fn rust_layout_matches_golden() {
+    // Raw decode only: no reference post-processing, no nested-drop. The golden has neither.
+    // SAFETY: single-threaded test binary; set before the first `run_layout` reads them.
+    unsafe {
+        std::env::set_var("PADDLEOCR_VL_RAW_LAYOUT", "1");
+        std::env::set_var("PADDLEOCR_VL_KEEP_NESTED", "1");
+    }
     set_default_dylib();
     let model = std::env::var("PADDLEOCR_LAYOUT_MODEL")
         .unwrap_or_else(|_| "models/PP-DocLayoutV3.onnx".to_string());
