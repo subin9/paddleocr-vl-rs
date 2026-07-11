@@ -25,6 +25,10 @@ export ORT_DYLIB_PATH="${ORT_DYLIB_PATH:-/home/sb/mistral-paddle/.venv/lib/pytho
 export PADDLEOCR_LAYOUT_MODEL="${PADDLEOCR_LAYOUT_MODEL:-/home/sb/mistral-paddle/layout/models/PP-DocLayoutV3.onnx}"
 export PADDLEOCR_VL_WEIGHTS="${PADDLEOCR_VL_WEIGHTS:-/home/sb/mistral-paddle/ref/weights}"
 export PADDLEOCR_VL_GPU="${PADDLEOCR_VL_GPU:-1}"
+# Belt-and-suspenders wall-clock backstop: the glue's per-region tokio timeout can't break a
+# pre-response engine deadlock, so `timeout` hard-kills the whole page invocation. Whole-page budget
+# (model load + all crops); a hit -> skip page + named log. Override RECOGNIZE_TIMEOUT_SECS.
+RECOGNIZE_TIMEOUT_SECS="${RECOGNIZE_TIMEOUT_SECS:-600}"
 
 mkdir -p "$PREDS" "$WORK"
 n=0; done=0
@@ -54,7 +58,8 @@ while IFS= read -r img; do
   # has one entry per manifest task. A genuine mid-recognition failure (missing/short/
   # truncated results.json) skips just this one page instead of aborting the whole run.
   # ponytail: skip-on-failure, no retry -- add a single retry if real (pre-write) crashes appear.
-  rc=0; "$RECOGNIZE_BIN" "$page_dir" || rc=$?
+  rc=0; timeout -k 30 "$RECOGNIZE_TIMEOUT_SECS" "$RECOGNIZE_BIN" "$page_dir" || rc=$?
+  [ "$rc" -eq 124 ] && echo "[$n] RECOGNIZE TIMED OUT (>${RECOGNIZE_TIMEOUT_SECS}s) -> skip page: $stem" >&2
   if ! python3 -c "import json,sys; m=json.load(open('$page_dir/manifest.json')); r=json.load(open('$page_dir/results.json')); sys.exit(0 if len(m)>0 and len(r)==len(m) else 1)" 2>/dev/null; then
     echo "[$n] RECOGNIZE FAILED (rc=$rc, results.json missing/incomplete) -> skip page" >&2
     continue

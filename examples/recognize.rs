@@ -29,6 +29,10 @@ const WEIGHTS_ENV: &str = "PADDLEOCR_VL_WEIGHTS";
 /// under this. Fixed cap: raise if a legitimately long table/formula ever truncates.
 const MAX_NEW_TOKENS: usize = 2048;
 
+/// Per-region wall-clock guard on top of the token cap: a region that blows this budget records
+/// empty text and the run continues instead of hanging. Override via PADDLEOCR_VL_REGION_TIMEOUT_SECS.
+const REGION_TIMEOUT_SECS: u64 = 120;
+
 /// One layout task, as emitted by this repo's `assemble::manifest_json`. The `prompt` is already
 /// resolved by class in the layout stage, so recognition is a dumb crop+prompt -> text mapper.
 #[derive(Debug, Deserialize)]
@@ -75,6 +79,13 @@ async fn main() -> Result<()> {
     }
     let model = builder.build().await?;
 
+    let region_timeout = std::time::Duration::from_secs(
+        std::env::var("PADDLEOCR_VL_REGION_TIMEOUT_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(REGION_TIMEOUT_SECS),
+    );
+
     let mut results = Vec::with_capacity(tasks.len());
     for task in &tasks {
         let crop_path = manifest_dir.join(&task.crop);
@@ -88,12 +99,19 @@ async fn main() -> Result<()> {
         ))
         .set_sampler_max_len(MAX_NEW_TOKENS);
 
-        let resp = model.send_chat_request(req).await?;
-        let text = resp.choices[0]
-            .message
-            .content
-            .clone()
-            .unwrap_or_default();
+        let text = match tokio::time::timeout(region_timeout, model.send_chat_request(req)).await {
+            Ok(resp) => resp?.choices[0].message.content.clone().unwrap_or_default(),
+            Err(_) => {
+                eprintln!(
+                    "[{}] {} ({}) -> TIMEOUT after {}s, recording empty text",
+                    task.read_order,
+                    task.crop,
+                    task.class,
+                    region_timeout.as_secs()
+                );
+                String::new()
+            }
+        };
 
         println!(
             "[{}] {} ({}) -> {text:?}",
