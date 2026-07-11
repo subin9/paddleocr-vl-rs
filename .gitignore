@@ -39,3 +39,4 @@ bench/omnidocbench/scorer-venv/
 # pipeline stdout logs echo recognized dataset text (license-encumbered) — scores-only .scorer.log/.json stay committed
 bench/omnidocbench/results/*.run.log
 **/OmniDocBench_*/
+bench/omnidocbench/paddle-venv/
