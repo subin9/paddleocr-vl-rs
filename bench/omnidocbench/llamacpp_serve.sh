@@ -29,6 +29,14 @@ PORT="${PORT:-8081}"
 #   * OOM-kills it outright (twice; the second took this supervisor with it).
 # So: make the benchmark the one thing the OOM killer will not touch. If the box gets tight the
 # kernel now eats rust-analyzer (VS Code just respawns it) instead of a 34,097-crop run.
+# -cram 0: THE OTHER HALF OF THE MEMORY PRESSURE, and this half is ours. llama-server keeps a prompt
+# cache whose default cap is 8192 MiB, and it fills it: RSS climbed to 13.5GB (= ~5.3GB model/CUDA
+# host buffers + ~8GB cache) and parked at the box's 15.9GB ceiling. Measured: +110MB per 17 pages,
+# monotonic. Every crop we send is a DIFFERENT image, so every prompt is unique and NOTHING in that
+# cache is ever reusable -- it is 8GB of pure ballast. At the ceiling the kernel starts reclaiming the
+# mmap'd model file pages (clean + file-backed, so it needs no swap to evict them), the server
+# re-faults them off disk, and it goes unresponsive for 200s+ while its own request timings stay at
+# ~400ms. That is why the slow-page tail survived swapoff: with -cram 0 it settles at ~5.3GB.
 oom_immune() { sudo -n sh -c "echo -1000 > /proc/$1/oom_score_adj" 2>/dev/null || true; }
 
 # Supervised restart: an OOM kill (or any crash) must not silently end a 34,097-crop run. The client
@@ -40,6 +48,7 @@ while true; do
     -m "$GGUF" --mmproj "$MMPROJ" \
     --jinja --chat-template-file "$TMPL" \
     -ngl 99 -c 8192 -np 1 --temp 0 --top-k 1 \
+    -cram 0 \
     --host 127.0.0.1 --port "${PORT}" \
     --no-warmup &
   srv=$!
