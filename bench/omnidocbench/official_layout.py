@@ -47,14 +47,47 @@ def pipeline_kwargs():
     return {k: sub[k] for k in KNOBS if k in sub}
 
 
+def spy_on_postprocess():
+    """Capture the raw detection array the reference post-processor is HANDED, per page.
+
+    `fixture` mode needs BOTH sides of the post-processing step: its input (the raw [cls, score,
+    x0,y0,x1,y1, order] array, pre-round/threshold/NMS/merge) and its output (the reference's final
+    boxes). Dumping the input lets the Rust port be tested on the post-processing ALONE -- feed it
+    the official detector's own detections, demand the official pipeline's boxes back. That isolates
+    the logic under test from the CatmullRom-vs-cv2.INTER_CUBIC resampler difference, which shifts a
+    few boxes by a pixel or two and would otherwise make an exact-match assert impossible.
+    """
+    from paddlex.inference.models.layout_analysis import processors as lap
+
+    seen = {}
+    original = lap.LayoutAnalysisProcess.apply
+
+    def spy(self, boxes, img_size, *a, **kw):
+        # copy BEFORE apply(): its first act is an in-place np.round of the coordinates.
+        seen["dets"] = [[float(v) for v in row] for row in boxes]
+        seen["img_size"] = [int(v) for v in img_size]  # (w, h)
+        return original(self, boxes, img_size, *a, **kw)
+
+    lap.LayoutAnalysisProcess.apply = spy
+    return seen
+
+
 def main():
     pages = json.loads(Path(sys.argv[1]).read_text())
     out_path = Path(sys.argv[2]) if len(sys.argv) > 2 else HERE / "work/official_layout.json"
     mode = sys.argv[3] if len(sys.argv) > 3 else "raw"
 
-    kwargs = pipeline_kwargs() if mode == "pipeline" else {}
+    kwargs = pipeline_kwargs() if mode in ("pipeline", "fixture") else {}
     cfg = {"mode": mode, "source": str(PIPELINE_YAML) if kwargs else "PP-DocLayoutV3/inference.yml",
            **kwargs}
+    # `fixture` pins layout_shape_mode=rect: the reference's default `auto` feeds the instance MASKS
+    # into filter_boxes' polygon-overlap rescue, and our ONNX port decodes boxes only (masks are
+    # `fetch_name_2`, unused). Testing the port against the mask-driven variant would assert a
+    # behaviour it cannot have. rect is the same code path with masks off -- an honest target. The
+    # cost of that choice is measured separately (see layout_probe.py), not assumed away.
+    predict_kwargs = {"layout_shape_mode": "rect"} if mode == "fixture" else {}
+    cfg.update(predict_kwargs)
+    spy = spy_on_postprocess() if mode == "fixture" else None
     det = LayoutDetection(model_name="PP-DocLayoutV3", **kwargs)
     print("effective official config:", json.dumps(cfg, default=str), flush=True)
 
@@ -65,13 +98,16 @@ def main():
         if img is None:
             print(f"  SKIP (no image): {stem}", flush=True)
             continue
-        (res,) = det.predict(str(img), batch_size=1)
+        (res,) = det.predict(str(img), batch_size=1, **predict_kwargs)
         boxes = [[float(x) for x in d["coordinate"]] for d in res["boxes"]]
         out[stem] = {
             "boxes": boxes,
             "classes": [d["label"] for d in res["boxes"]],
             "scores": [float(d["score"]) for d in res["boxes"]],
         }
+        if spy is not None:
+            out[stem]["raw_dets"] = spy["dets"]
+            out[stem]["img_size"] = spy["img_size"]
         print(f"  {stem}: {len(boxes)} regions", flush=True)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

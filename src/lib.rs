@@ -43,11 +43,30 @@ pub const LABEL_LIST: [&str; 25] = [
     "vision_footnote",
 ];
 
-/// Detections below this confidence are dropped (matches PaddleX `draw_threshold`).
+/// Detections below this confidence are dropped by the RAW detector (PP-DocLayoutV3's own
+/// `inference.yml` `draw_threshold`). The reference PIPELINE overrides it -- see [`REF_THRESH`].
 pub const SCORE_THRESH: f32 = 0.5;
 /// A region this fraction contained in a strictly larger one is a nested sub-region: its parent's
 /// own OCR already renders that content, so cropping it too emits the text twice. See [`drop_nested`].
 pub const NEST_CONTAINMENT: f32 = 0.8;
+
+/// Reference-pipeline score threshold (`threshold: 0.3` in `PaddleOCR-VL-1.5.yaml`), NOT the raw
+/// detector's 0.5: the published number keeps every detection down to 0.3. See [`ref_postprocess`].
+pub const REF_THRESH: f32 = 0.3;
+/// `layout_nms` IoU thresholds: same class suppresses hard, different classes almost never.
+const IOU_SAME: f32 = 0.6;
+const IOU_DIFF: f32 = 0.98;
+/// Classes whose `layout_merge_bboxes_mode` is `large` (all others are `union` = no-op). A box
+/// >=90% inside one of these is absorbed by it. Indices 3/5/6/15/17 of [`LABEL_LIST`] in the yaml.
+const MERGE_LARGE: [&str; 5] = [
+    "chart",
+    "display_formula",
+    "doc_title",
+    "inline_formula",
+    "paragraph_title",
+];
+/// `filter_boxes` never drops a pair straddling these: a caption over a figure is not a duplicate.
+const PICTORIAL: [&str; 4] = ["image", "table", "seal", "chart"];
 /// Fixed square the graph expects (`image` input is [N,3,800,800]).
 const SIDE: u32 = 800;
 
@@ -121,6 +140,226 @@ pub fn drop_nested(regions: &mut Vec<Region>) {
     regions.retain(|_| *it.next().unwrap_or(&true));
 }
 
+/// Area with the +1 padding PaddleX's `iou()` uses (and only there -- its containment/overlap
+/// helpers use the unpadded area, so the two must not be unified).
+fn area_p1(b: &[f32; 4]) -> f32 {
+    (b[2] - b[0] + 1.0) * (b[3] - b[1] + 1.0)
+}
+
+fn iou_p1(a: &[f32; 4], b: &[f32; 4]) -> f32 {
+    let (x0, y0) = (a[0].max(b[0]), a[1].max(b[1]));
+    let (x1, y1) = (a[2].min(b[2]), a[3].min(b[3]));
+    let inter = (x1 - x0 + 1.0).max(0.0) * (y1 - y0 + 1.0).max(0.0);
+    inter / (area_p1(a) + area_p1(b) - inter)
+}
+
+/// `is_contained`: >=90% of `inner`'s own area lies in `outer`.
+fn is_contained(inner: &[f32; 4], outer: &[f32; 4]) -> bool {
+    let a = area(inner);
+    a > 0.0 && intersection(inner, outer) / a >= 0.9
+}
+
+/// `calculate_overlap_ratio(mode="small")`: intersection over the SMALLER box's area.
+fn overlap_small(a: &[f32; 4], b: &[f32; 4]) -> f32 {
+    let r = area(a).min(area(b));
+    if r == 0.0 {
+        0.0
+    } else {
+        intersection(a, b) / r
+    }
+}
+
+/// The reference pipeline's layout post-processing, ported from PaddleX
+/// `layout_analysis/processors.py` (`LayoutAnalysisProcess.apply` + `filter_boxes`) as the shipped
+/// `paddlex/configs/pipelines/PaddleOCR-VL-1.5.yaml` configures it.
+///
+/// PP-DocLayoutV3's *raw* detector (its own `inference.yml`: score>0.5, no NMS, no merging) is what
+/// this crate shipped, and a probe against the official model established the port reproduces that
+/// detector faithfully (mean GT-block coverage 0.750 vs its 0.739 on the 10 worst pages). But the
+/// PAPER's number is not produced by the raw detector: the reference runs the same weights through
+/// the post-processing below, which lifts coverage to 0.860 and recovers 102 of our failed blocks.
+/// Omitting it was the port defect; this is the fix.
+///
+/// Steps, in the reference's order (their order is load-bearing -- NMS before merging, both before
+/// the pairwise overlap filter, which is index-sensitive and so runs on the reading-order list):
+/// 1. round coordinates (`np.round` = ties-to-EVEN, not Rust's ties-away-from-zero)
+/// 2. score > [`REF_THRESH`] (0.3, not our 0.5)
+/// 3. `layout_nms`: greedy, descending score, [`IOU_SAME`] / [`IOU_DIFF`] by class agreement
+/// 4. drop an `image` box that covers ~the whole page (a full-page scan detected as a figure)
+/// 5. `layout_merge_bboxes_mode`: the [`MERGE_LARGE`] classes absorb what they contain
+/// 6. reading order, then clip to the page and drop degenerate boxes
+/// 7. `filter_boxes`: drop `reference` containers, sub-6px slivers, and overlapping duplicates
+///
+/// (`layout_unclip_ratio: [1.0, 1.0]` is the identity, so there is nothing to port for it.)
+///
+/// This SUPERSEDES [`drop_nested`], which hand-rolled step 7's job: `filter_boxes` drops an
+/// `inline_formula` overlapping any other box, and the `reference` container outright. It even
+/// carries the same guard we had to add by hand -- a pair straddling [`PICTORIAL`] is never merged,
+/// so a `text` inside an `image` keeps its only copy.
+pub fn ref_postprocess(regions: &mut Vec<Region>, img_w: f32, img_h: f32) {
+    for r in regions.iter_mut() {
+        for v in r.bbox.iter_mut() {
+            *v = v.round_ties_even();
+        }
+    }
+    regions.retain(|r| r.score > REF_THRESH);
+    layout_nms(regions);
+    filter_page_sized_image(regions, img_w, img_h);
+    merge_large(regions);
+    regions.sort_by_key(|r| r.read_order);
+    clip_to_page(regions, img_w, img_h);
+    filter_boxes(regions);
+}
+
+/// Greedy NMS, highest score first. A survivor suppresses a later box at IoU >= 0.6 if they share a
+/// class, >= 0.98 if they do not (i.e. only near-exact duplicates cross class lines).
+fn layout_nms(regions: &mut Vec<Region>) {
+    let mut order: Vec<usize> = (0..regions.len()).collect();
+    order.sort_by(|&a, &b| {
+        regions[b].score
+            .partial_cmp(&regions[a].score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut keep = vec![false; regions.len()];
+    let mut pool: Vec<usize> = order;
+    while let Some(&cur) = pool.first() {
+        keep[cur] = true;
+        let (cbox, clabel) = (regions[cur].bbox, regions[cur].label);
+        pool = pool[1..]
+            .iter()
+            .copied()
+            .filter(|&i| {
+                let thresh = if regions[i].label == clabel { IOU_SAME } else { IOU_DIFF };
+                iou_p1(&regions[i].bbox, &cbox) < thresh
+            })
+            .collect();
+    }
+    let mut it = keep.iter();
+    regions.retain(|_| *it.next().unwrap_or(&true));
+}
+
+/// An `image` detection covering >=82% (landscape) / 93% (portrait) of the page is the page itself,
+/// not a figure in it. Dropped -- unless it is all we have, in which case the reference keeps
+/// everything rather than return nothing.
+fn filter_page_sized_image(regions: &mut Vec<Region>, img_w: f32, img_h: f32) {
+    if regions.len() <= 1 {
+        return;
+    }
+    let thresh = if img_w > img_h { 0.82 } else { 0.93 };
+    let limit = thresh * img_w * img_h;
+    let keep: Vec<bool> = regions
+        .iter()
+        .map(|r| {
+            r.class != "image" || {
+                let b = [
+                    r.bbox[0].max(0.0),
+                    r.bbox[1].max(0.0),
+                    r.bbox[2].min(img_w),
+                    r.bbox[3].min(img_h),
+                ];
+                (b[2] - b[0]) * (b[3] - b[1]) <= limit
+            }
+        })
+        .collect();
+    if keep.iter().any(|&k| k) {
+        let mut it = keep.iter();
+        regions.retain(|_| *it.next().unwrap_or(&true));
+    }
+}
+
+/// `layout_merge_bboxes_mode: large` -- drop any box >=90% inside a box of a [`MERGE_LARGE`] class.
+/// Every class's containment is computed against the SAME pre-merge set (the reference ANDs the
+/// per-class masks), so a drop never cascades.
+fn merge_large(regions: &mut Vec<Region>) {
+    let absorbers: Vec<bool> = regions
+        .iter()
+        .map(|r| MERGE_LARGE.contains(&r.class.as_str()))
+        .collect();
+    let boxes: Vec<[f32; 4]> = regions.iter().map(|r| r.bbox).collect();
+    let keep: Vec<bool> = boxes
+        .iter()
+        .enumerate()
+        .map(|(i, b)| {
+            !boxes
+                .iter()
+                .enumerate()
+                .any(|(j, o)| i != j && absorbers[j] && is_contained(b, o))
+        })
+        .collect();
+    let mut it = keep.iter();
+    regions.retain(|_| *it.next().unwrap_or(&true));
+}
+
+/// `restructured_boxes`: clamp to the page, truncate to integer pixels, drop what collapses.
+fn clip_to_page(regions: &mut Vec<Region>, img_w: f32, img_h: f32) {
+    for r in regions.iter_mut() {
+        r.bbox = [
+            r.bbox[0].max(0.0).trunc(),
+            r.bbox[1].max(0.0).trunc(),
+            r.bbox[2].min(img_w).trunc(),
+            r.bbox[3].min(img_h).trunc(),
+        ];
+    }
+    regions.retain(|r| r.bbox[2] > r.bbox[0] && r.bbox[3] > r.bbox[1]);
+}
+
+/// `filter_boxes`: the reference's own de-duplication pass (predictor default
+/// `filter_overlap_boxes=True`), ported for `layout_shape_mode="rect"`.
+///
+/// - `reference` containers are dropped outright -- their `reference_content` children carry the text.
+/// - Boxes under 6px on a side are slivers.
+/// - An `inline_formula` more than half-inside any other box is already in that box's OCR.
+/// - Otherwise, of two boxes >70% overlapping (relative to the SMALLER), the smaller goes -- except
+///   when the pair straddles [`PICTORIAL`], where the overlap is a caption on a figure, not a copy.
+///
+/// The index-sensitive quirks are the reference's, and are preserved deliberately: the sliver test
+/// marks box `i` only when the outer loop reaches it, so a sliver can still evict a full-size box
+/// that precedes it; and `dropped` is consulted, not compacted, so a dropped box stops participating
+/// but does not shift the indices of the rest.
+fn filter_boxes(regions: &mut Vec<Region>) {
+    regions.retain(|r| r.class != "reference");
+    let n = regions.len();
+    let mut dropped = vec![false; n];
+    for i in 0..n {
+        let bi = regions[i].bbox;
+        if bi[2] - bi[0] < 6.0 || bi[3] - bi[1] < 6.0 {
+            dropped[i] = true;
+        }
+        for j in (i + 1)..n {
+            if dropped[i] || dropped[j] {
+                continue;
+            }
+            let bj = regions[j].bbox;
+            let (ci, cj) = (regions[i].class.as_str(), regions[j].class.as_str());
+            let ratio = overlap_small(&bi, &bj);
+            if ci == "inline_formula" || cj == "inline_formula" {
+                if ratio > 0.5 {
+                    dropped[i] |= ci == "inline_formula";
+                    dropped[j] |= cj == "inline_formula";
+                }
+                continue;
+            }
+            if ratio > 0.7 {
+                let pictorial = PICTORIAL.contains(&ci) || PICTORIAL.contains(&cj);
+                let table = ci == "table" || cj == "table";
+                let both_pictorial = PICTORIAL.contains(&ci) && PICTORIAL.contains(&cj);
+                // A mixed pair touching a figure/table/seal/chart is a caption, not a duplicate --
+                // EXCEPT a table overlapping a non-pictorial box, which really is a duplicate.
+                if pictorial && ci != cj && (!table || both_pictorial) {
+                    continue;
+                }
+                if area(&bi) >= area(&bj) {
+                    dropped[j] = true;
+                } else {
+                    dropped[i] = true;
+                }
+            }
+        }
+    }
+    let mut it = dropped.iter();
+    regions.retain(|_| !*it.next().unwrap_or(&false));
+}
+
 /// config.json preprocess recipe: resize to 800x800 (CatmullRom approximates cv2.INTER_CUBIC, so
 /// the resampler differs and boxes match a cv2 reference only to a few px), `/255` only
 /// (mean=0, std=1), CHW, BGR channel order (the model was trained on cv2 BGR). Returns the flat
@@ -169,10 +408,12 @@ pub fn run_layout(session: &mut Session, img: &image::RgbImage) -> ort::Result<V
     let (_, bbox_num) = outputs["fetch_name_1"].try_extract_tensor::<i32>()?;
     let n = bbox_num.first().copied().unwrap_or(0).max(0) as usize;
 
+    // Keep every detection here: the reference post-processing thresholds at 0.3, so filtering at
+    // our 0.5 up front would throw away the 0.3-0.5 band before it ever gets a say.
     let mut regions: Vec<Region> = dets
         .chunks_exact(7)
         .take(n)
-        .filter(|r| r[1] > SCORE_THRESH)
+        .filter(|r| r[0] > -1.0)
         .map(|r| {
             let label = r[0].max(0.0) as usize;
             Region {
@@ -186,6 +427,17 @@ pub fn run_layout(session: &mut Session, img: &image::RgbImage) -> ort::Result<V
             }
         })
         .collect();
+
+    // `PADDLEOCR_VL_REF_LAYOUT=1` runs the reference pipeline's post-processing instead of the raw
+    // detector's defaults. Opt-in, NOT the default: it is the fix for a confirmed port defect, but
+    // it changes the crops, so it cannot be priced from the existing recognition output the way the
+    // nested/visual A/Bs were -- it needs a full re-run and an official re-score first. The default
+    // stays bit-identical to the scored baseline until that number lands. See `ref_postprocess`.
+    if std::env::var_os("PADDLEOCR_VL_REF_LAYOUT").is_some() {
+        ref_postprocess(&mut regions, ow, oh);
+        return Ok(regions);
+    }
+    regions.retain(|r| r.score > SCORE_THRESH);
     regions.sort_by_key(|reg| reg.read_order);
     // Ablation switch (mirrors `PADDLEOCR_VL_KEEP_VISUAL`): keeps the duplicated nested crops so the
     // A/B that priced this guard stays reproducible.
@@ -259,6 +511,41 @@ mod tests {
         drop_nested(&mut regions);
         let kept: Vec<&str> = regions.iter().map(|r| r.class.as_str()).collect();
         assert_eq!(kept, ["image", "text", "text"]);
+    }
+
+    // The corpus fixture (tests/ref_postproc_parity.rs) pins `ref_postprocess` against PaddleX on
+    // 6600 real detections and kills a mutation of every step -- except these two, which no page in
+    // it happens to trigger (0 sub-6px detections, 0 page-sized `image` boxes). Synthetic, so they
+    // are covered anyway rather than left to chance.
+
+    #[test]
+    fn slivers_are_dropped() {
+        // `filter_boxes`: under 6px on a side is a detector artefact, not a region.
+        let mut regions = vec![
+            reg("text", [0.0, 0.0, 100.0, 100.0], 0),
+            reg("text", [200.0, 200.0, 260.0, 205.0], 1), // 5px tall
+        ];
+        ref_postprocess(&mut regions, 800.0, 800.0);
+        assert_eq!(regions.len(), 1);
+        assert_eq!(regions[0].bbox, [0.0, 0.0, 100.0, 100.0]);
+    }
+
+    #[test]
+    fn page_sized_image_dropped_unless_it_is_all_there_is() {
+        // A full-page scan detected as one `image` covers the text under it; the reference drops it
+        // (>93% of a portrait page) -- but never returns nothing, so alone it survives.
+        let page = [0.0, 0.0, 800.0, 1000.0];
+        let mut regions = vec![
+            reg("image", page, 0),
+            reg("text", [10.0, 10.0, 700.0, 100.0], 1),
+        ];
+        ref_postprocess(&mut regions, 800.0, 1000.0);
+        let kept: Vec<&str> = regions.iter().map(|r| r.class.as_str()).collect();
+        assert_eq!(kept, ["text"]);
+
+        let mut only = vec![reg("image", page, 0)];
+        ref_postprocess(&mut only, 800.0, 1000.0);
+        assert_eq!(only.len(), 1, "the reference keeps everything over returning nothing");
     }
 
     #[test]
