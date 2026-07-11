@@ -1,0 +1,24 @@
+diff --git a/dataset/end2end_dataset.py b/dataset/end2end_dataset.py
+index 4680e0e..47f3021 100644
+--- a/dataset/end2end_dataset.py
++++ b/dataset/end2end_dataset.py
+@@ -75,7 +75,18 @@ class End2EndDataset():
+                 truncated_all[item['anno_id']] = item
+         
+         for merge_list in related_truncated:
+-            text_block_list = [truncated_all[key] for key in merge_list]
++            # Backport of upstream fix (opendatalab/OmniDocBench origin/main
++            # src/dataset/end2end_dataset.py:191): skip truncated-relation anno_ids that
++            # never resolved to a layout_det (left as "" placeholder). In OmniDocBench v1.5
++            # GT, 12 pages have `truncated` relations whose source/target_anno_id are INT
++            # (e.g. 4, 14) while layout_dets use STRING ids ('box_id_0'...), so the ref is
++            # dangling and `truncated_all[key]` stays "" -> `""['order']` TypeError crash.
++            # Guarding here is behavior-preserving on all well-formed pages (every key
++            # resolves -> truthy) and on the 12 malformed pages simply drops the bogus merge
++            # (those blocks don't exist), leaving the real blocks scored individually.
++            text_block_list = [truncated_all[key] for key in merge_list if truncated_all.get(key)]
++            if not text_block_list:
++                continue
+             sorted_block = sorted(text_block_list, key=lambda x: x['order'])
+             text = ""
+             for block in sorted_block:
