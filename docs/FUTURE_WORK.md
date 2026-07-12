@@ -38,15 +38,19 @@ is a model property (and the guard is the right answer forever); if no, it is a 
 or EOS handling and the guard is masking it. That single experiment is the whole task — do it before
 touching any generation code.
 
-## Purge the accidentally-committed venv from git history (before any push)
+## DONE — Purge the accidentally-committed venv from git history (before any push)
 
-**Why:** `bench/omnidocbench/paddle-venv/` (19,585 files, 1.2GB of PaddlePaddle/modelscope wheels and
-binaries) was committed in `512f17b8` — it was added before the `.gitignore` rule covering it landed.
-`e2ac8bf3` stops tracking it, but **`git rm --cached` does not remove the blobs from history**; they
-are still in every clone's object store (`.git` is 361MB). **Hard part:** none technically
-(`git filter-repo --path bench/omnidocbench/paddle-venv --invert-paths`), but it **rewrites every
-commit SHA**, so it must happen before the repo is ever pushed or shared — which is exactly why it is
-recorded here instead of being done silently mid-benchmark.
+`bench/omnidocbench/paddle-venv/` (19,585 files, 1.2GB of PaddlePaddle/modelscope wheels) was committed
+in `512f17b8`, before the `.gitignore` rule covering it landed. `e2ac8bf3` untracked it, but
+`git rm --cached` does not remove blobs from *history* — they stayed in the object store.
+
+Purged with `git filter-repo --path bench/omnidocbench/paddle-venv/ --invert-paths`, gated on the tree
+being byte-identical afterwards: the non-venv `git ls-files` sha1 matched exactly, 21,569 venv objects →
+**0**, `.git` **359M → 856K**, `cargo build`/`cargo test` green. 115 → 114 commits, because the
+"untrack the venv" commit became empty and was pruned. A full pre-purge bundle is retained off-repo
+(`/home/sb/paddleocr-vl-rs-prepurge.bundle`) — note filter-repo rewrites *branches* too, so a backup
+branch is not a backup; the bundle is. Every SHA changed, so the first push must be a force-push of a
+divergent history (the old remote only ever held 2 commits and never saw the venv).
 
 ## DONE — Skip visual-only regions in assembly (`VISUAL_ONLY_CLASSES`, measured §2.3-step-1)
 
@@ -62,7 +66,8 @@ still runs the VLM on every `chart`/`image`/`seal` crop first — wasted GPU tim
 emit hundreds of tokens). The layout stage already knows the class in `manifest.json`, so recognition
 could skip the same `VISUAL_ONLY_CLASSES`. **Hard part:** it lives in the mistral.rs example
 (`paddleocr_vl_recognize`), not this crate; keep the `results.json` contract intact (emit the region
-with empty text, or omit it) so `assemble` behavior is unchanged. Fold into the §2.4 load-once mode.
+with empty text, or omit it) so `assemble` behavior is unchanged. Still open: load-once (§2.8) shipped
+without it, so every chart/image/seal crop is still recognized and then thrown away at assembly.
 
 ## book text_block 0.339 — standalone `inline_formula` wrapped as display `\[…\]`
 
@@ -95,18 +100,21 @@ identical) — a usability mode that changes a token is a bug. The runaway guard
 per-region tokio timeout unchanged, and the old per-page `timeout` process kill became an OS-thread
 watchdog + `TIMEOUT_SKIP` page marker, so a wedged engine costs one page, not the run.
 
-**The remaining speed lever is kernels, not harness** — see "LM-prefill / vision-GEMM residual kernel
-work" below. That is what the 2.7x is, and it is upstream in candle.
+**The remaining speed lever is kernels, not harness** — the per-crop time did not move, so no further
+harness change can touch the residual 2.7x. See "LM-prefill / vision-GEMM residual kernel work" below
+for the (still unmeasured) kernel-level attribution.
 
-## OmniDocBench full-benchmark accuracy-preservation run
+## DONE — OmniDocBench full-benchmark accuracy-preservation run
 
-**Why:** elevates the current 9-fixture token-parity check to a standard document-parsing benchmark,
-turning "matches the reference on 9 hand-picked crops" into a defensible score on OmniDocBench v1.5.
-**Hard part:** running mistral.rs vs HF/transformers vs vLLM on the same box with the official
-scoring script, and framing it correctly -- the result is accuracy-preservation (the port is
-token-faithful, so it should match the reference), with the port's edge being single-binary
-deployment, not serving throughput. Same-hardware caveat, not a SOTA-speed claim. See
-[BENCHMARKS.md](BENCHMARKS.md) "Planned".
+Ran, scored with the official script, and written up in [BENCHMARKS.md](BENCHMARKS.md). On the
+1355-page like-for-like v1.5 slice: text-edit **0.0328**, reading-order **0.0415**, TEDS **92.75**,
+formula CDM **91.77** → `Overall` **93.75** vs the paper's **94.50**. Text, reading-order and table
+reach published parity; the whole −0.75 deficit is formula CDM, which is the open item at the top of
+this file.
+
+**What it did not become:** a same-box run against HF/transformers or vLLM. The cross-stack arm that
+*was* run is **llama.cpp** (bf16 both sides), so there is no transformers end-to-end floor anywhere in
+this repo and none is claimed. That is a permanent gap, not work in flight.
 
 ## Assembler class-mapping expansion
 
@@ -119,12 +127,70 @@ whether some (headers/footers, page numbers) should be dropped rather than rende
 
 ## LM-prefill / vision-GEMM residual kernel work — THE remaining speed lever
 
-**Why:** after moving vision + LM attention to fused Sdpa/flash, the remaining prefill gap vs torch
-is candle's dense GEMM/MLP (linear projections) on the vision encoder. With the per-page reload now
-deleted (§2.8), this is **all that is left** of the llama.cpp gap: **0.50s/crop vs 0.12s/crop**, i.e.
-the whole measured **2.7x**. No harness change can touch it. **Hard part:** it is a candle maturity
-ceiling (generic-Rust / MKL-call-overhead GEMM vs torch's tuned oneDNN/cuBLAS), not a bug in this
-repo — the win is bounded by candle's kernel quality, which is upstream.
+**Why:** after moving vision + LM attention to fused Sdpa/flash, the residual gap sits in the dense
+GEMM/MLP (linear projections) of the vision encoder. With the per-page reload deleted (§2.8), this is
+**all that is left** of the llama.cpp gap: **0.50s/crop vs 0.12s/crop**, i.e. the whole measured
+**2.7x**. No harness change can touch it.
+
+**Status of the attribution: best-supported hypothesis, not a measurement.** "Candle's vision GEMM is
+the ceiling" is *inferred* from where the whole-pipeline time goes (0.50 vs 0.12 s/crop with attention
+already on the fused path), not from timing a kernel. It is consistent with candle being a younger
+kernel stack than ggml's hand-tuned per-architecture CUDA — a **maturity** gap, upstream of this repo,
+not a bug in it — but nothing here has isolated the kernel from the workload. The micro-benchmark
+below is what would turn the inference into a fact, and it is the honest prerequisite to filing
+anything upstream. **Hard part:** if it *is* candle's GEMM, the fix is upstream and bounded by candle's
+kernel quality, which this repo does not control.
+
+## GEMM micro-benchmark: `candle.matmul` vs ggml `MUL_MAT`, bf16 both sides — settle the 2.7x
+
+**Why:** the 2.7x is a *whole-pipeline* number, so it confounds two things — the kernel and the
+workload. This bench removes the workload: same GPU, same shapes, same dtype, one op. It is the
+experiment [BENCHMARKS.md](BENCHMARKS.md) ("What would actually settle it") points at, and the only
+thing that upgrades "candle's vision GEMM is the ceiling" from inference to measurement.
+
+**Shapes — the vision tower's actual GEMMs** (config: hidden 1152, intermediate 4304, 27 layers,
+patch 14, spatial-merge 2; no fused QKV — q/k/v/out are four separate projections):
+
+| GEMM | shape `[M,K]×[K,N]` | per crop |
+|---|---|---|
+| vision q / k / v / out_proj | `[M, 1152] × [1152, 1152]` | ×4 × 27 layers |
+| vision MLP fc1 | `[M, 1152] × [1152, 4304]` | ×27 |
+| vision MLP fc2 | `[M, 4304] × [4304, 1152]` | ×27 |
+| connector linear_1 | `[M/4, 4608] × [4608, 4608]` | ×1 |
+| connector linear_2 | `[M/4, 4608] × [4608, 1024]` | ×1 |
+
+`M` = patch tokens, and it is the variable that matters: crops are variable-resolution (NaViT-style),
+so `M` moves with crop size. One **real, checkable** value to anchor the sweep: the repo's `ocr`
+fixture crop is a `1×14×46` patch grid → **M = 644** (161 merged tokens; see
+`inputs_processor.rs:6` in the mistral.rs fork). Sweep `M ∈ {64, 256, 644, 1024, 4096}` to span a
+text-line crop through a full-page one. Secondary: the LM's own prefill shapes (hidden 1024, inter
+3072 → q `1024×2048`, k/v `1024×256`, o `2048×1024`, gate/up `1024×3072`, down `3072×1024`) — the LM is
+*not* where the gap is believed to live, so it is the control arm, not the treatment.
+
+**Method:** a ~40-line candle bin timing `Tensor::matmul` per shape (warm-up, then N iters, CUDA-synced),
+against llama.cpp's existing `test-backend-ops perf -o MUL_MAT` on the same box. **Report GFLOPS per
+shape** (`2·M·K·N / seconds`), not a single ratio — a per-shape table is what tells you whether candle
+is uniformly behind or only behind on the tall-skinny/small-M shapes that OCR crops actually produce.
+Sweep bf16 **and** f16/f32 so the dtype axis is visible rather than assumed.
+
+**Honesty framing this bench must preserve (and can falsify):**
+- **bf16 held equal on both sides.** That is the whole point — it is what rules out "ggml is fast
+  because it quantized". If ggml's CUDA `MUL_MAT` turns out to lack a real bf16 path for some shape
+  and upcasts or reroutes, **that is a finding, report it** — do not silently compare against f16.
+- **The 2.7x is workload-specific** (compute-bound vision prefill + short OCR decode). The micro-bench
+  is the *kernel* number; it should not be expected to reproduce 2.7x, and if it comes out at, say,
+  1.3x, that is informative: it would mean most of the pipeline gap is *not* raw GEMM throughput and
+  the hypothesis above is wrong.
+- **ggml's remaining trade-off is portability, not precision.** Hand-tuned per-architecture kernels are
+  real work candle has not done; a like-for-like bf16 same-shape bench is exactly what makes that
+  trade-off legible instead of rhetorical.
+- **Single GPU (RTX 4070 Ti Super), single box.** A kernel gap moves with the architecture it was tuned
+  for. State it; do not generalize past it.
+
+**Optional deeper probe (not required):** an `nsys`/`ncu` trace of one vision forward would name the
+exact slow kernel and turn "candle maturity ceiling" from an inference into a named symbol. Caveat: GPU
+profiling under WSL is frequently restricted (counter access is gated), so this may not be runnable on
+this box at all. The matmul micro-bench needs none of it — it is pure wall-clock and works anywhere.
 
 ## Batching Approach A (cu_seqlens packed vision)
 
