@@ -22,6 +22,10 @@ import argparse, re, statistics as st
 
 AP = argparse.ArgumentParser()
 AP.add_argument("--rust-log", default="logs/speed_rust.log")
+AP.add_argument("--rust-csv", default=None,
+                help="speed_loadonce.py per-page CSV (load-once mode); replaces --rust-log. Rust's "
+                     "end-to-end page cost becomes layout+recognize+assemble, with the checkpoint "
+                     "load paid ONCE for the run instead of once per page")
 AP.add_argument("--llama-log", default="logs/llamacpp_recognize.log")
 AP.add_argument("--stems", default="speed120.stems")
 AP.add_argument("--layout-secs", type=float, default=0.88,
@@ -33,15 +37,21 @@ A = AP.parse_args()
 
 stems = {l.strip()[:-4] for l in open(A.stems) if l.strip()}
 
-stem_of, rust = {}, {}
-for line in open(A.rust_log, errors="replace"):
-    m = re.match(r"\[(\d+)\] == (.+) ==$", line.strip())
-    if m:
-        stem_of[m.group(1)] = m.group(2)
-        continue
-    m = re.match(r"\[(\d+)\] wrote .* in (\d+)s$", line.strip())
-    if m and m.group(1) in stem_of:
-        rust[stem_of[m.group(1)]] = float(m.group(2))
+rust = {}
+if A.rust_csv:
+    import csv
+    for r in csv.DictReader(open(A.rust_csv)):
+        rust[r["stem"]] = float(r["layout_s"]) + float(r["recognize_s"]) + float(r["assemble_s"])
+else:
+    stem_of = {}
+    for line in open(A.rust_log, errors="replace"):
+        m = re.match(r"\[(\d+)\] == (.+) ==$", line.strip())
+        if m:
+            stem_of[m.group(1)] = m.group(2)
+            continue
+        m = re.match(r"\[(\d+)\] wrote .* in (\d+)s$", line.strip())
+        if m and m.group(1) in stem_of:
+            rust[stem_of[m.group(1)]] = float(m.group(2))
 
 llama = {}
 for line in open(A.llama_log, errors="replace"):
@@ -50,7 +60,8 @@ for line in open(A.llama_log, errors="replace"):
         llama[m.group(2)] = (int(m.group(3)), float(m.group(4)))
 
 both = [(llama[s][0], rust[s], llama[s][1] + A.layout_secs) for s in rust if s in llama]
-print(f"paired pages: {len(both)}  (Rust: clean-box re-run; llama.cpp: pages >= {A.llama_after}; "
+mode = "load-once" if A.rust_csv else "per-page reload"
+print(f"paired pages: {len(both)}  (Rust: clean-box, {mode}; llama.cpp: pages >= {A.llama_after}; "
       f"+{A.layout_secs}s layout added to llama.cpp)\n")
 print(f"{'crops':>10}  {'n':>3}  {'Rust end-to-end':>16}  {'llama.cpp +layout':>18}  {'speedup':>8}")
 for lo, hi in [(1, 5), (6, 10), (11, 15), (16, 25), (26, 40), (41, 200)]:
