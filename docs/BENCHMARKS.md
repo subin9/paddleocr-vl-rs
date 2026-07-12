@@ -131,16 +131,25 @@ argmax on this corpus. See the repo's parity harness.
 
 # OmniDocBench v1.5 accuracy-preservation run
 
-The 9-item corpus proves token parity but is not a standard benchmark. This section tracks a full
-OmniDocBench v1.5 run scored with the **official** evaluation code. Our own measured numbers are
-`PENDING` until the runs land; nothing here is fabricated or extrapolated.
+The 9-item corpus proves token parity but is not a standard benchmark. This section is a full
+OmniDocBench v1.5 run scored with the **official** evaluation code. **The runs have landed** — the
+result is in the HEADLINE table below (text, reading-order and table at parity; formula −2.44 CDM).
+Sections are kept in the order they were written, so the pre-run methodology and the two superseded
+verdicts stay readable beneath the result rather than being edited into hindsight.
 
-**Framing (honest, held fixed as numbers land):** the primary result is **accuracy-preservation** --
-the port is token-for-token faithful to transformers on the 9-item corpus, so on OmniDocBench it
-should reproduce the reference's document-parsing scores within noise. A *divergence* would be a real
-and valuable finding (report the failing doc types, don't hide it). The port's edge is **deployment**
-(a single self-contained Rust binary, no Python/Paddle runtime), **not** serving throughput; any
-speed comparison is same-box and explicitly not a SOTA-speed claim.
+**Framing, pre-registered before any number was known (and it is worth checking it against what
+landed):** the primary result is **accuracy-preservation** — the port is token-for-token faithful to
+transformers on the 9-item corpus, so on OmniDocBench it should reproduce the reference's
+document-parsing scores within noise. A *divergence* would be a real and valuable finding (report the
+failing doc types, don't hide it). The port's edge is **deployment** (a single self-contained Rust
+binary, no Python/Paddle runtime), **not** serving throughput; any speed comparison is same-box and
+explicitly not a SOTA-speed claim.
+
+**How that held up:** preservation confirmed on three of four metrics, one real gap (formula CDM)
+reported rather than buried — and the deployment-not-throughput claim survived contact with the
+llama.cpp cross-check, which the port **loses** by 2.7x (§2.7–§2.8). Two divergences we *did* find
+turned out to be defects in our own glue, not in the ported weights (layout post-processing §2.5a,
+table HTML §2.3), which is exactly the outcome the pre-registration said to look for.
 
 ## Methodology (recon — recorded before any run)
 
@@ -401,8 +410,11 @@ formula **GAP of −2.44 CDM** (the only remaining divergence; see §2.4 below).
 | **full 1651 superset** | **≤ 91.80** (see below) | **0.0797** pg-avg | edit 0.2559 (**NOT CDM**) | **0.8336 / 0.8761** | **0.0929** | DIVERGES — **artifact of the superset + 2 assembly bugs since fixed** |
 | **paper reference** | 94.50 | 0.035 | CDM 94.21 | 92.76 / 95.79 | 0.042 | target (on **1355**, not 1651) |
 
-Speed table (secondary; Rust GPU-bf16 vs transformers floor, per-stage) also PENDING — see the
-existing latency sections above for the single-crop microbenchmarks already measured.
+Speed (secondary) was measured, but **against llama.cpp, not against a transformers full-page floor**
+— see §2.7–§2.8 for the per-page and per-stage numbers. The transformers reference was never run over
+the full page set; only the single-crop latency microbenchmarks above exist for it. That remains a
+**gap we state rather than estimate**, and it is why no "vs transformers, end-to-end" row appears
+anywhere in this doc.
 
 ### Stratified subset (n=150) — result + verdict (§2.3)
 
@@ -552,7 +564,8 @@ substitutions only 8.1%).
 Failed/skipped pages are unchanged across both arms: the same **2** empty-layout pages emit no `.md`
 and are skipped by the scorer (2 `!!!WARNING: No prediction` lines in both logs), so the A/B compares
 the same 1649 pages. Reproduce: `PADDLEOCR_VL_RAW_LAYOUT=1` for the baseline arm, default for the new
-one; scorer logs in `bench/omnidocbench/results/{full1651_nonest2,reflayout1651}.scorer.log`.
+one; scorer logs in `bench/omnidocbench/results/{full1651_nonest2,reflayout1651}.scorer.log`, and both
+arms' scores in the matching `*_quick_match_metric_result.json` beside them.
 
 ### The table gap: an assembly/format defect in our port, not a recognition gap (§2.3)
 
@@ -674,6 +687,17 @@ figure (80.90) is *not* the comparable one: 91 of the 313 formula-bearing pages 
 ships (`METRIC_REGISTRY` carries `CDM`; `configs/end2end.yaml` merely defaults to `CDM_plain`).
 Config `data/subsets/cdm1651.end2end.yaml`, `display_formula: [Edit_dist, CDM]`, same raw GT, same
 `quick_match`, preds = the shipped default. Env fix is in `setup_cdm_env.sh` (`3c6740e0`).
+
+**Where the evidence is** (every number above is read off a committed file, not off this prose):
+`results/cdm1651_quick_match_metric_result.json` — its `display_formula.page.CDM` block carries the
+all-pages `ALL` (0.809011 → 80.90) *and* the per-attribute rows, including `subset: v1.5`
+(0.91769 → **91.77**) and `equation_hard` (0.572077). One naming trap, since the scorer names its
+output after the **prediction** dir and not the config: the CDM run reused the shipped `otslhtml1651`
+predictions, so the scorer wrote `otslhtml1651_quick_match_metric_result.json` — the same name the
+earlier full-metric run used, but containing **only** `display_formula`. Overwriting would have
+destroyed the text/table/reading-order results. Both are therefore kept, under distinct names:
+`otslhtml1651_*` (text/table/RO + formula-Edit) and `cdm1651_*` (formula Edit + CDM). Their shared
+`Edit_dist` keys are identical, which is the internal control described below.
 
 **The gate that makes this number trustworthy.** CDM renders LaTeX to a raster and recovers per-token
 boxes by *exact pixel-colour* lookup, so a broken TeX env silently returns **CDM ≈ 0** through a bare
@@ -839,10 +863,11 @@ greedy sampler, same engine.
 **Attribution — what this did and did not fix.** It removed a harness artifact worth **1.6s/page**
 (measured 10.0 → 8.42s; the reload's own cost was 1.76s/page) and **nothing else**. Recognition still
 costs **0.50s/crop** against llama.cpp's 0.12s: the per-crop kernel time did not move, because nothing
-about the kernels changed. The residual **2.7x is the candle vision-GEMM/MLP ceiling** described under
-"Honest residual" — an upstream candle maturity gap, not something a harness change can touch. The
-sole lever left on this axis is kernel work (FUTURE_WORK: LM-prefill / vision-GEMM), and it is
-upstream of this repo.
+about the kernels changed. The residual **2.7x is therefore kernel-time, not harness-time** — no
+further harness change can touch it — and it is best explained by the candle vision-GEMM/MLP ceiling
+described under "Honest residual". That attribution is an *inference* from where the time goes, not a
+kernel-level measurement; the micro-benchmark that would confirm it directly is specified in
+FUTURE_WORK.md, and the limits on how far this 2.7x generalizes are spelled out below.
 
 The predicted residual was 2.6x and the measured one is 2.7x. The 0.1x is the reload being slightly
 cheaper to delete than it was to pay (1.6s recovered vs 1.76s charged) — page-level medians over
@@ -878,6 +903,42 @@ to.
 workload, **llama.cpp wins on throughput and we report that plainly**. The port's actual edge is what
 it was always claimed to be: a **Python-free single static binary** (no torch, no venv, no CUDA-python
 stack) that reproduces the model's accuracy — which §2.6 now shows it does, to 0.0003 edit distance.
+
+### What the 2.7x does and does not generalize to (read before quoting it)
+
+The number is real and it is ours to own, but it is easy to over-read in either direction. Three
+limits, stated so nobody has to infer them:
+
+1. **The magnitude is workload-specific.** 2.7x is *this* workload: OCR crops, so a compute-bound
+   **vision prefill** followed by a *short* decode (a page's regions transcribe to tens of tokens, not
+   thousands). That mix maximally exposes the one thing candle is weak at here (dense vision GEMM/MLP)
+   and barely exercises decode, where the port is competitive (it *beats* torch 1.39x on GPU decode,
+   see the latency section). A long-generation or decode-dominated workload would weight the same two
+   engines completely differently, and 2.7x should not be quoted for it. It is a per-page ratio on a
+   1355-page document benchmark, not a property of candle.
+2. **The direction is more general than the magnitude.** In any *compute-bound* regime dominated by
+   dense GEMM, a mature hand-tuned kernel stack beats a younger generic one, and ggml's kernels are
+   the more mature of the two here. So "llama.cpp is ahead on this axis" is the safe reading;
+   "llama.cpp is 2.7x faster" is the unsafe one — that constant belongs to this workload and this GPU.
+   **Single GPU (RTX 4070 Ti Super), single box** — no claim is made about other hardware, and a
+   kernel gap is exactly the kind of thing that moves with the architecture it is tuned for.
+3. **ggml's speed is not free, but the usual discount does not apply here.** The standard caveat
+   against a ggml comparison is that its wins often come with trade-offs — quantized/reduced-precision
+   paths, and hardware-specific hand-tuned kernels that buy speed with portability. The first of those
+   is **ruled out by construction in this comparison: both sides are bf16** (the GGUF's
+   `general.file_type` = 32 = `MOSTLY_BF16`, read from the header, for the LM *and* the mmproj — §2.6),
+   and the two stacks agree to 0.0003 edit distance, so llama.cpp is not buying speed with accuracy on
+   this run. The second trade-off is real and stands: some of ggml's advantage is hand-written
+   per-architecture kernel work that candle has not (yet) done. That is a **maturity** gap, not a
+   design flaw in candle, and it is upstream of this repo.
+
+**What would actually settle it.** All of the above still infers a kernel-level cause from a
+whole-pipeline measurement. The clean test is to take the workload out of the picture entirely and
+time `candle.matmul` against ggml `MUL_MAT` in isolation, bf16 both sides, on the vision tower's own
+GEMM shapes. That micro-benchmark is specified in FUTURE_WORK.md; until it is run, "candle's vision
+GEMM is the ceiling" remains the **best-supported hypothesis** (the 0.50 vs 0.12 s/crop split, and the
+fact that attention is already fused, both point at it) rather than a directly measured fact, and this
+doc marks it as such.
 
 The transformers reference was **not** run over the full page set (only the single-crop latency
 microbenchmarks earlier in this doc). Stated as a gap rather than estimated.
