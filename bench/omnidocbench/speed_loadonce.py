@@ -19,9 +19,12 @@ is a box artifact, not a pipeline property -- that is the mistake §2.7 caught.
 import csv, json, os, pathlib, re, statistics as st, subprocess, sys, time
 
 HERE = pathlib.Path(__file__).resolve().parent
+# WS: workspace holding this repo's out-of-tree deps (mistral.rs, weights, the ONNX layout model,
+# onnxruntime). Defaults to the repo's parent dir; override any path below via its env var.
+WS = os.environ.get("WS") or str(HERE.parents[2])
 LAYOUT = (HERE / "../../target/release/paddleocr-layout").resolve()
 RECOG = pathlib.Path(os.environ.get(
-    "RECOGNIZE_BIN", "/home/sb/mistral-paddle/mistralrs/target/release/examples/paddleocr_vl_recognize"))
+    "RECOGNIZE_BIN", f"{WS}/mistralrs/target/release/examples/paddleocr_vl_recognize"))
 IMAGES = HERE / "data/images"
 WORK = HERE / "work_speed_lo"
 OUT_CSV = HERE / "logs/speed_loadonce.csv"
@@ -29,9 +32,9 @@ STEMS = HERE / (sys.argv[1] if len(sys.argv) > 1 else "speed120.stems")
 
 env = dict(os.environ)
 env.setdefault("ORT_DYLIB_PATH",
-               "/home/sb/mistral-paddle/.venv/lib/python3.12/site-packages/onnxruntime/capi/libonnxruntime.so.1.27.0")
-env.setdefault("PADDLEOCR_LAYOUT_MODEL", "/home/sb/mistral-paddle/layout/models/PP-DocLayoutV3.onnx")
-env.setdefault("PADDLEOCR_VL_WEIGHTS", "/home/sb/mistral-paddle/ref/weights")
+               f"{WS}/.venv/lib/python3.12/site-packages/onnxruntime/capi/libonnxruntime.so.1.27.0")
+env.setdefault("PADDLEOCR_LAYOUT_MODEL", f"{WS}/layout/models/PP-DocLayoutV3.onnx")
+env.setdefault("PADDLEOCR_VL_WEIGHTS", f"{WS}/ref/weights")
 env.setdefault("PADDLEOCR_VL_GPU", "1")
 
 imgs = [l.strip() for l in open(STEMS) if l.strip()]

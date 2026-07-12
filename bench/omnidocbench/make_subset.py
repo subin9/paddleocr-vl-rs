@@ -7,17 +7,19 @@ Usage: make_subset.py <stems_file> <subset_name>
               page_info.image_path values.
 Writes (paths relative to this script's dir):
   data/subsets/<name>.gt.json        filtered GT (dataset-derived -> gitignored)
-  data/subsets/<name>.end2end.yaml   scorer config, ABSOLUTE paths (derived -> gitignored)
+  data/subsets/<name>.end2end.yaml   scorer config, committed
 
-The committed, reproducible inputs are this script + the stem list under subsets/.
-Run the scorer with:  scorer-venv/bin/python -m ... no -- from the OmniDocBench eval dir:
+The scorer opens `data_path` relative to its OWN cwd, and it is always run from the eval clone --
+so the config's paths are written relative to that dir, making it machine-independent (an absolute
+path would pin every score to one home dir). Run it exactly like this:
   cd ../OmniDocBench && ../omnidocbench/scorer-venv/bin/python pdf_validation.py \
-      --config <abs path to the .end2end.yaml>
+      -c ../omnidocbench/data/subsets/<name>.end2end.yaml
 """
 import json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GT_ALL = os.path.join(HERE, "data", "OmniDocBench.json")
+EVAL_DIR = os.path.join(HERE, "..", "OmniDocBench")   # the scorer's cwd; need not exist yet
 
 def main(stems_file, name):
     wanted = [l.strip() for l in open(stems_file) if l.strip()]
@@ -44,8 +46,8 @@ def main(stems_file, name):
             },
             "dataset": {
                 "dataset_name": "end2end_dataset",
-                "ground_truth": {"data_path": gt_path},
-                "prediction": {"data_path": preds_dir},
+                "ground_truth": {"data_path": os.path.relpath(gt_path, EVAL_DIR)},
+                "prediction": {"data_path": os.path.relpath(preds_dir, EVAL_DIR)},
                 "match_method": "quick_match",
             },
         }

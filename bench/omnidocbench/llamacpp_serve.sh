@@ -9,7 +9,8 @@
 # ponytail: llama-server (load once, N requests) instead of llama-mtmd-cli per crop -- 34,097 crops
 # would otherwise mean 34,097 model loads.
 set -euo pipefail
-BUILD="${BUILD:-/home/sb/mistral-paddle/llamacpp-build}"
+WS="${WS:-$(cd "$(dirname "$0")/../../.." && pwd)}"   # see llamacpp_build.sh
+BUILD="${BUILD:-$WS/llamacpp-build}"
 GGUF="${GGUF:-$BUILD/gguf/PaddleOCR-VL-1.5.gguf}"
 MMPROJ="${MMPROJ:-$BUILD/gguf/PaddleOCR-VL-1.5-mmproj.gguf}"
 TMPL="${TMPL:-$BUILD/gguf/chat_template.jinja}"

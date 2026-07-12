@@ -8,7 +8,10 @@
 # The PATH nvcc is 11.5 and CANNOT target sm_89 (Ada, RTX 4070 Ti SUPER), so we pin CUDACXX to the
 # 12.9 toolchain explicitly. Getting this wrong yields a CPU-only or unsupported-arch build.
 set -euo pipefail
-BUILD="${BUILD:-/home/sb/mistral-paddle/llamacpp-build}"
+# WS: the workspace holding this repo's out-of-tree neighbours (the llama.cpp build, the weights).
+# Defaults to the repo's parent dir; override if yours live elsewhere.
+WS="${WS:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+BUILD="${BUILD:-$WS/llamacpp-build}"
 PIN="${PIN:-4f37f519}"
 CUDA="${CUDA:-/usr/local/cuda}"
 mkdir -p "$BUILD"

@@ -20,12 +20,14 @@ STEMS_FILE="${1:?usage: run_pipeline.sh <image-list-file> <preds_dir> <work_dir>
 PREDS="${2:?usage: run_pipeline.sh <image-list-file> <preds_dir> <work_dir>}"
 WORK="${3:?usage: run_pipeline.sh <image-list-file> <preds_dir> <work_dir>}"
 
+WS="${WS:-$(cd "$ROOT/.." && pwd)}"   # workspace holding the out-of-tree deps (mistral.rs, weights,
+                                      # the ONNX layout model, onnxruntime). Override if they differ.
 IMAGES="${IMAGES:-$HERE/data/images}"
 LAYOUT_BIN="${LAYOUT_BIN:-$ROOT/target/release/paddleocr-layout}"
-RECOGNIZE_BIN="${RECOGNIZE_BIN:-/home/sb/mistral-paddle/mistralrs/target/release/examples/paddleocr_vl_recognize}"
-export ORT_DYLIB_PATH="${ORT_DYLIB_PATH:-/home/sb/mistral-paddle/.venv/lib/python3.12/site-packages/onnxruntime/capi/libonnxruntime.so.1.27.0}"
-export PADDLEOCR_LAYOUT_MODEL="${PADDLEOCR_LAYOUT_MODEL:-/home/sb/mistral-paddle/layout/models/PP-DocLayoutV3.onnx}"
-export PADDLEOCR_VL_WEIGHTS="${PADDLEOCR_VL_WEIGHTS:-/home/sb/mistral-paddle/ref/weights}"
+RECOGNIZE_BIN="${RECOGNIZE_BIN:-$WS/mistralrs/target/release/examples/paddleocr_vl_recognize}"
+export ORT_DYLIB_PATH="${ORT_DYLIB_PATH:-$WS/.venv/lib/python3.12/site-packages/onnxruntime/capi/libonnxruntime.so.1.27.0}"
+export PADDLEOCR_LAYOUT_MODEL="${PADDLEOCR_LAYOUT_MODEL:-$WS/layout/models/PP-DocLayoutV3.onnx}"
+export PADDLEOCR_VL_WEIGHTS="${PADDLEOCR_VL_WEIGHTS:-$WS/ref/weights}"
 export PADDLEOCR_VL_GPU="${PADDLEOCR_VL_GPU:-1}"
 # Runaway guard, load-once shape. Inside the binary: the per-region tokio timeout still records empty
 # text and moves on, and its hard backstop (an OS-thread watchdog at 2x that budget, for a wedged

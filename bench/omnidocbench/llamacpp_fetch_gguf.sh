@@ -7,15 +7,17 @@
 # general.file_type at the end, and that printed value is what BENCHMARKS.md must quote. A quantized
 # run compared against our bf16 port without saying so would be a dishonest comparison.
 set -euo pipefail
-BUILD="${BUILD:-/home/sb/mistral-paddle/llamacpp-build}"
+WS="${WS:-$(cd "$(dirname "$0")/../../.." && pwd)}"   # see llamacpp_build.sh
+BUILD="${BUILD:-$WS/llamacpp-build}"
 REPO="${REPO:-PaddlePaddle/PaddleOCR-VL-1.5-GGUF}"
-HF="${HF:-/home/sb/mistral-paddle/.venv/bin/hf}"
+HF="${HF:-$WS/.venv/bin/hf}"
+PY_BIN="${PY_BIN:-$WS/.venv/bin/python}"
 
 "$HF" download "$REPO" --local-dir "$BUILD/gguf"
 ls -la "$BUILD/gguf"
 
 # Read the precision off the header rather than trusting the filename or the model card.
-/home/sb/mistral-paddle/.venv/bin/python - "$BUILD/gguf" <<'PY'
+"$PY_BIN" - "$BUILD/gguf" <<'PY'
 import pathlib, struct, sys
 # Minimal GGUF header reader: magic, version, n_tensors, n_kv, then the kv block. We only need
 # general.file_type (u32), so we stop as soon as we have it.

@@ -26,10 +26,10 @@
     "dataset": {
       "dataset_name": "end2end_dataset",
       "ground_truth": {
-        "data_path": "/home/sb/mistral-paddle/paddleocr-vl-rs/bench/omnidocbench/data/subsets/subset150.gt.json"
+        "data_path": "../omnidocbench/data/subsets/subset150.gt.json"
       },
       "prediction": {
-        "data_path": "/home/sb/mistral-paddle/paddleocr-vl-rs/bench/omnidocbench/preds/subset150"
+        "data_path": "../omnidocbench/preds/subset150"
       },
       "match_method": "quick_match"
     }

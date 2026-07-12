@@ -73,8 +73,8 @@ uv pip install --python "$HERE/scorer-venv/bin/python" "scikit-image<=0.20.0" ma
 
 # 6. The scoring config: same GT, same preds, same quick_match as every other run --
 #    the ONLY delta is CDM alongside the edit proxy on display_formula.
-#    (Lives in the gitignored dataset dir like every other end2end config, so it is
-#    written here rather than committed, keeping the repro self-contained.)
+#    (Rewritten here rather than only committed, so the repro stays self-contained. Paths are
+#    relative to the SCORER's cwd -- the eval clone -- not to this script; see make_subset.py.)
 cat > "$HERE/data/subsets/cdm1651.end2end.yaml" <<YAML
 {
   "end2end_eval": {
@@ -83,8 +83,8 @@ cat > "$HERE/data/subsets/cdm1651.end2end.yaml" <<YAML
     },
     "dataset": {
       "dataset_name": "end2end_dataset",
-      "ground_truth": { "data_path": "$HERE/data/OmniDocBench.json" },
-      "prediction":   { "data_path": "$HERE/preds/otslhtml1651" },
+      "ground_truth": { "data_path": "../omnidocbench/data/OmniDocBench.json" },
+      "prediction":   { "data_path": "../omnidocbench/preds/otslhtml1651" },
       "match_method": "quick_match"
     }
   }

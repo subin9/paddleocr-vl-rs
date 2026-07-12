@@ -11,11 +11,13 @@ alone, and attributing it to load without measuring would be a guess. Time the t
 Run recognize over pages of differing crop counts; the fit's intercept is spawn+load, the slope is
 per-crop. Layout is timed standalone. spawn+load+layout should reconstruct the ~12s.
 """
-import json, pathlib, statistics as st, subprocess, sys, time
+import json, os, pathlib, statistics as st, subprocess, sys, time
 
 HERE = pathlib.Path(__file__).resolve().parent
+WS = os.environ.get("WS") or str(HERE.parents[2])   # out-of-tree deps; see speed_loadonce.py
 LAYOUT = HERE / "../../target/release/paddleocr-layout"
-RECOG = pathlib.Path("/home/sb/mistral-paddle/mistralrs/target/release/examples/paddleocr_vl_recognize")
+RECOG = pathlib.Path(os.environ.get(
+    "RECOGNIZE_BIN", f"{WS}/mistralrs/target/release/examples/paddleocr_vl_recognize"))
 WORK = HERE / "work_reflayout"
 
 

@@ -11,8 +11,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 STEMS="${1:-$HERE/parity24.stems}"
 OUT="$HERE/work_parity"
-RECOGNIZE_BIN="${RECOGNIZE_BIN:-/home/sb/mistral-paddle/mistralrs/target/release/examples/paddleocr_vl_recognize}"
-export PADDLEOCR_VL_WEIGHTS="${PADDLEOCR_VL_WEIGHTS:-/home/sb/mistral-paddle/ref/weights}"
+WS="${WS:-$(cd "$HERE/../../.." && pwd)}"   # workspace holding the out-of-tree mistral.rs + weights
+RECOGNIZE_BIN="${RECOGNIZE_BIN:-$WS/mistralrs/target/release/examples/paddleocr_vl_recognize}"
+export PADDLEOCR_VL_WEIGHTS="${PADDLEOCR_VL_WEIGHTS:-$WS/ref/weights}"
 export PADDLEOCR_VL_GPU="${PADDLEOCR_VL_GPU:-1}"
 
 rm -rf "$OUT"; mkdir -p "$OUT/reload" "$OUT/loadonce"
