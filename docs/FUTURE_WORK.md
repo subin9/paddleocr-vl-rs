@@ -79,14 +79,24 @@ raw table Edit_dist. TEDS is OmniDocBench's headline table metric, so this is lo
 gap is worth understanding before the full run (likely OTSL→pipe cell-text normalization differences).
 **Hard part:** diagnostic only — compare normalized GT vs pred table strings on the 2 academic tables.
 
-## Load-once page-iterating recognize mode (before the full 1651-page run)
+## DONE — Load-once page-iterating recognize mode (§2.8, measured)
 
-**Why:** `paddleocr_vl_recognize` builds one engine (loads the checkpoint) per process invocation,
-and the driver invokes it once per page. Model load is only ~1.5s (small 0.9B ckpt) so the full run
-is still ~2.3h, but a load-once mode that iterates page dirs removes 1651 redundant loads and is the
-clean way to run + time the full set. **Hard part:** none structural — add an arg mode to the
-example that loops over multiple manifest dirs reusing one built model; keep the per-page contract
-identical so `run_pipeline.sh` stays the fallback.
+Implemented: `paddleocr_vl_recognize <dir>... | --list <file>` builds the engine once and iterates
+page dirs; `run_pipeline.sh` runs layout per page → **one** recognition process over all pending pages
+→ assembly per page. Iterate, not serve — the binary already loaded once and looped crops, so this was
+~30 lines; a server would have needed HTTP + image upload + prompt marshalling for the same win.
+
+Measured on the clean box, same 118 pages as §2.7: median page **10.0s → 8.42s**, checkpoint load
+**1.76s/page → 2.02s once per run**, llama.cpp gap **3.2x → 2.7x**. Recognition per crop is unchanged
+(0.52 → 0.50s/crop), which is the point: this deleted a harness artifact and nothing else.
+
+Gated on byte-identical output (`loadonce_parity.sh`, 24 pages / 189 crops / all 22 classes, 24/24
+identical) — a usability mode that changes a token is a bug. The runaway guard survived the refactor:
+per-region tokio timeout unchanged, and the old per-page `timeout` process kill became an OS-thread
+watchdog + `TIMEOUT_SKIP` page marker, so a wedged engine costs one page, not the run.
+
+**The remaining speed lever is kernels, not harness** — see "LM-prefill / vision-GEMM residual kernel
+work" below. That is what the 2.7x is, and it is upstream in candle.
 
 ## OmniDocBench full-benchmark accuracy-preservation run
 
@@ -107,13 +117,14 @@ formula numbering, aside/vertical text, etc.) to appropriate markdown/handling i
 high-value polish. **Hard part:** mostly taste -- deciding the right markdown for each class and
 whether some (headers/footers, page numbers) should be dropped rather than rendered.
 
-## LM-prefill / vision-GEMM residual kernel work
+## LM-prefill / vision-GEMM residual kernel work — THE remaining speed lever
 
 **Why:** after moving vision + LM attention to fused Sdpa/flash, the remaining prefill gap vs torch
-is candle's dense GEMM/MLP (linear projections) on the vision encoder. **Hard part:** it is a candle
-maturity ceiling (generic-Rust / MKL-call-overhead GEMM vs torch's tuned oneDNN/cuBLAS), not a bug
-in this repo. Low priority: attention is no longer the bottleneck and the win here is bounded by
-candle's kernel quality, which is upstream.
+is candle's dense GEMM/MLP (linear projections) on the vision encoder. With the per-page reload now
+deleted (§2.8), this is **all that is left** of the llama.cpp gap: **0.50s/crop vs 0.12s/crop**, i.e.
+the whole measured **2.7x**. No harness change can touch it. **Hard part:** it is a candle maturity
+ceiling (generic-Rust / MKL-call-overhead GEMM vs torch's tuned oneDNN/cuBLAS), not a bug in this
+repo — the win is bounded by candle's kernel quality, which is upstream.
 
 ## Batching Approach A (cu_seqlens packed vision)
 

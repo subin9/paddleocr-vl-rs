@@ -763,10 +763,16 @@ unresponsive (llama-server's 8 GB default prompt cache, `-cram`, on a 15.9 GB bo
 version would have booked an infrastructure stall as a *llama.cpp accuracy miss that never happened* —
 the guard's job is to make that distinction visible, and the fix is to re-run the page, not to keep it.
 
-### Speed, honestly (§2.7) — llama.cpp is ~3.2x faster per page, and the port's edge is not throughput
+### Speed, honestly (§2.7–§2.8) — llama.cpp is 2.7x faster per page, and the port's edge is not throughput
 
 **Secondary result, and it does not flatter the port.** Same box, same 118-page stratified sample
 (`speed120.stems`), same crops, bf16 both sides, K=1 serial recognition by design.
+
+**Current number: 2.7x** (load-once recognition, §2.8 below). The 3.2x in the tables that follow was
+measured with the old harness, which reloaded the checkpoint once per page; that reload has since been
+deleted, which is worth **1.6s/page** and nothing else. The §2.7 material is kept because the two
+mistakes it caught — a memory-leak "speedup" and an uncharged layout stage — are the reason any of
+these numbers can be trusted.
 
 **The first number here was wrong, and the reason it was wrong matters.** The Rust full-run timings
 (median 17s/page) were taken on the box that was *later* found to be thrashing — rust-analyzer holding
@@ -792,14 +798,81 @@ Per-page medians over the 103 pages both stacks timed on the clean box. Rust's h
 | stage | cost | who pays it |
 |---|---|---|
 | ONNX layout (PP-DocLayoutV3) | **0.88s**/page | both — llama.cpp *reuses the Rust run's crops*, so it never re-runs the detector; **0.88s is added back to every llama.cpp page above**, or the comparison would be a lie |
-| process spawn + bf16 model load | **1.76s**/page | **Rust only** — `run_pipeline.sh` invokes the recognize binary once per *page*. A harness artifact, not a port property (load-once mode → FUTURE_WORK) |
+| process spawn + bf16 model load | **1.76s**/page | **Rust only** — the old `run_pipeline.sh` invoked the recognize binary once per *page*. A harness artifact, not a port property — **now deleted, see §2.8** |
 | recognition | **0.52s/crop** (Rust) vs **0.12s/crop** (llama.cpp) | the real gap |
 
 **The gap is kernels, not harness.** Removing the per-page model reload entirely (the load-once mode)
-would take a median page from 10.0s to ~8.2s — still ~2.6x slower than llama.cpp. The **0.52 vs 0.12
+should take a median page from 10.0s to ~8.2s — still ~2.6x slower than llama.cpp. The **0.52 vs 0.12
 s/crop** is where the time actually goes, and it is consistent with the "Honest residual" section
 above: candle's dense GEMM/MLP on the vision encoder is the ceiling, and that is an upstream maturity
 gap, not a bug in this repo.
+
+### §2.8 — load-once recognition: the reload is gone, and it bought exactly what was predicted
+
+The claim above was a prediction (10.0s → ~8.2s, 3.2x → ~2.6x). It has now been implemented and
+measured, and the prediction is what shipped: **8.42s median, 2.7x**.
+
+`paddleocr_vl_recognize` now takes many page dirs (`--list <file>`) and loads the ~1.9GB checkpoint
+**once per run** instead of once per page; `run_pipeline.sh` drives layout (ONNX, per page) → one
+recognition process over every pending page → assembly (per page). Same crops, same prompts, same
+greedy sampler, same engine.
+
+| | old (per-page reload) | **load-once (§2.8)** |
+|---|---|---|
+| checkpoint load | 1.76s **per page** | **2.02s once for the whole 118-page run** (0.02s/page amortized) |
+| ONNX layout | 0.88s/page | 0.87s/page |
+| recognition | 0.52s/crop | **0.50s/crop** (unchanged — as it must be) |
+| assembly | — | 0.001s/page |
+| **median page, end-to-end** | **10.0s** | **8.42s** |
+| **vs llama.cpp + layout (3.1s)** | **3.2x** | **2.7x** |
+
+| crops/page | n | Rust load-once | llama.cpp + layout | speedup |
+|---|---|---|---|---|
+| 1–5 | 11 | 1.7s | 1.3s | 1.3x |
+| 6–10 | 22 | 4.6s | 2.1s | 2.2x |
+| 11–15 | 22 | 7.5s | 2.7s | 2.8x |
+| 16–25 | 22 | 10.7s | 3.3s | 3.2x |
+| 26–40 | 12 | 17.6s | 5.1s | 3.4x |
+| 41–200 | 14 | 32.6s | 12.8s | 2.6x |
+| **all** | **103** | **8.4s** | **3.1s** | **2.7x** |
+
+**Attribution — what this did and did not fix.** It removed a harness artifact worth **1.6s/page**
+(measured 10.0 → 8.42s; the reload's own cost was 1.76s/page) and **nothing else**. Recognition still
+costs **0.50s/crop** against llama.cpp's 0.12s: the per-crop kernel time did not move, because nothing
+about the kernels changed. The residual **2.7x is the candle vision-GEMM/MLP ceiling** described under
+"Honest residual" — an upstream candle maturity gap, not something a harness change can touch. The
+sole lever left on this axis is kernel work (FUTURE_WORK: LM-prefill / vision-GEMM), and it is
+upstream of this repo.
+
+The predicted residual was 2.6x and the measured one is 2.7x. The 0.1x is the reload being slightly
+cheaper to delete than it was to pay (1.6s recovered vs 1.76s charged) — page-level medians over
+different bucket mixes, not a new effect. The gap shrinks most on *small* pages (1–5 crops: 3.1x →
+1.3x), which is exactly the signature of removing a **fixed** per-page cost: it was the whole page on
+a 1-crop page and a rounding error on a 50-crop one.
+
+**Correctness gate, not a claim.** A speed mode that changes output is a bug, so load-once is gated on
+byte-identical results: `loadonce_parity.sh` runs both arms with the same binary over 24 pages / 189
+crops covering all 22 layout classes and diffs `results.json`. **24/24 byte-identical.** The gate runs
+both arms *now* rather than diffing against stored outputs, so a rebuild cannot be mistaken for a mode
+change.
+
+**Runaway guard survives.** The per-region tokio timeout (empty text, continue) is unchanged; the
+outer per-page `timeout` process kill — which load-once has no per-page process for — became an
+OS-thread watchdog that kills a wedged engine at 2x the region budget and marks the page `TIMEOUT_SKIP`
+so the resumable runner steps over it. Verified live: a crop forced to time out records empty text, its
+page's `results.json` stays complete, and the run continues to the next page. One hung crop costs one
+page, not the run.
+
+**Methodology (clean box, same as §2.7).** 118-page stratified sample, verified before timing: 4.1GB
+of 15GB used, **no swap**, no rust-analyzer, llama-server stopped, GPU idle. llama.cpp's timings are
+unchanged from §2.7 (server mode, bf16 GGUF, same box) and still carry the +0.88s layout add-back,
+since it reuses the Rust run's crops and never runs the detector. Reproduce:
+`speed_loadonce.py` → `speed_stats.py --rust-csv logs/speed_loadonce.csv`.
+
+**What did not change: the conclusion.** llama.cpp is still faster per page on this box, and this doc
+still says so. Deleting the reload made the port's *usability* honest (one load per run, not 1651 of
+them — ~48 min of pure reload over the full set); it did not make the port fast, and it was never going
+to.
 
 **What this is not.** Not a SOTA-speed claim, and not a claim the port is fast. On this box, for this
 workload, **llama.cpp wins on throughput and we report that plainly**. The port's actual edge is what
