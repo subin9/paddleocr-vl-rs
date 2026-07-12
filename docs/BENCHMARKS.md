@@ -544,9 +544,17 @@ K=1 serial recognition, only the layout post-processing differs:**
 | text_block Edit_dist ↓ | 0.0722 | **0.0428** | **−40.7% rel** | 0.035 (**1.22×** gap, was 2.07×) |
 | text_block edit_whole ↓ | 0.0662 | 0.0497 | −0.0165 | — |
 | reading_order Edit_dist ↓ | 0.0917 | **0.0500** | **−45.5% rel** | 0.042 (**1.19×** gap, was 2.21×) |
-| table TEDS ↑ | 0.8336 | 0.8364 | +0.0028 | 92.76 (**−9.12 pts**) |
-| table TEDS_structure_only ↑ | 0.8768 | 0.8804 | +0.0036 | 95.79 (−7.75 pts) |
+| table TEDS ↑ | 0.8340 | 0.8362 | +0.0022 | 92.76 (**−9.14 pts**) |
+| table TEDS_structure_only ↑ | 0.8765 | 0.8793 | +0.0028 | 95.79 (−7.86 pts) |
 | display_formula Edit_dist ↓ (PROXY, **not** CDM) | 0.2564 | 0.2495 | −0.0069 | CDM 94.21 — **not comparable** |
+
+**Which TEDS reduction (this bit the doc once, so it is pinned here).** The scorer emits table TEDS
+under **two** reductions: a **per-table** average (printed as `all` — every table in the corpus weighted
+equally) and a **page average** (`page` → `ALL` — mean within a page, then across pages). They differ by
+~0.005 here. The published figure is a page average (the v1.5 README pin above), so **every TEDS number
+in this doc is the page reduction**, read from `table.page.TEDS.ALL` in the result JSON — including these
+A/B rows, which earlier quoted the per-table `all` figure against the page-average 92.76 and so were
+comparing two different aggregations. Corrected; the direction and every verdict are unchanged.
 
 Better on **every** metric, orders of magnitude outside the pre-registered ±0.0005 noise band, so the
 rule registered *before* the number was known fires: **the default is now `ref_postprocess`.** The raw
@@ -555,7 +563,7 @@ scored baseline this flip was measured against, so it must stay runnable.
 
 The omitted post-processing accounts for **79% of the text-edit gap** and **84% of the reading-order
 gap** to the published numbers. Both are now *near* parity but not *at* it. **Table TEDS barely moved
-(+0.003) and is now the dominant remaining divergence (−9.12 pts) — a separate root cause the layout
+(+0.002) and is now the dominant remaining divergence (−9.14 pts) — a separate root cause the layout
 fix does not touch** (diagnosis: §2.3, below). Attribution is unchanged and worth stating plainly: this
 was a **layout-glue defect in our port, not a change to the ported VLM weights**, and it corroborates
 the independent error budget (layout accounted for 53.4% of text edits; in-crop recognition
@@ -569,8 +577,8 @@ arms' scores in the matching `*_quick_match_metric_result.json` beside them.
 
 ### The table gap: an assembly/format defect in our port, not a recognition gap (§2.3)
 
-After the layout flip, table TEDS (0.8364 vs published 92.76, **−9.12 pts**) was the dominant remaining
-divergence — and the layout fix had not touched it (+0.003), so it had a separate root cause. Diagnosed
+After the layout flip, table TEDS (0.8362 vs published 92.76, **−9.14 pts**) was the dominant remaining
+divergence — and the layout fix had not touched it (+0.002), so it had a separate root cause. Diagnosed
 in the order the evidence allows, all at **zero GPU**:
 
 **(a) Is the OTSL structure reaching the assembler, or is recognition flattening tables?** It is
@@ -600,14 +608,14 @@ GPU, like the keepvis/nonest A/Bs; **473 pages differ — exactly the table page
 
 | metric (page_avg unless noted) | `reflayout` (pipe-table) | **`otslhtml` (NEW default)** | delta | published PaddleOCR-VL-1.5 |
 |---|---|---|---|---|
-| table **TEDS** ↑ | 0.8364 | **0.8978** | **+0.0614** | 92.76 (**−2.98 pts**, was −9.12) |
-| table TEDS_structure_only ↑ | 0.8804 | **0.9392** | +0.0588 | 95.79 (−1.87 pts, was −7.75) |
+| table **TEDS** ↑ | 0.8362 | **0.9036** | **+0.0674** | 92.76 (**−2.40 pts**, was −9.14) |
+| table TEDS_structure_only ↑ | 0.8793 | **0.9433** | +0.0640 | 95.79 (−1.46 pts, was −7.86) |
 | table Edit_dist ↓ | 0.5628 | **0.0801** | **−0.4827** | — |
 | text_block Edit_dist ↓ | 0.0428 | **0.0368** | −0.0060 | 0.035 (**1.05×** gap, was 1.22×) |
 | reading_order Edit_dist ↓ | 0.0500 | **0.0434** | −0.0066 | 0.042 (**1.03×** gap, was 1.19×) |
 | display_formula Edit_dist ↓ (PROXY, **not** CDM) | 0.2495 | 0.2490 | −0.0005 | CDM 94.21 — **not comparable** |
 
-TEDS moves **+0.0614**, an order of magnitude outside the pre-registered ±0.005 band, so the rule
+TEDS moves **+0.0674**, an order of magnitude outside the pre-registered ±0.005 band, so the rule
 registered *before* the number fires: **the HTML converter ships as the default** (unconditional — there
 is no opt-in flag; the pipe-table path is deleted, not kept as an ablation, because it is simply wrong).
 
@@ -617,7 +625,9 @@ and reading_order comparisons. `research_report` — the most table-dense catego
 **0.0144** on text-edit alone (see the per-category table below). One defect, three metrics.
 
 **Verdict after the fix: text 1.05× and reading-order 1.03× of published — parity within noise; table
-TEDS −2.98 pts — a real but much smaller residual.**
+TEDS −2.40 pts — a real but much smaller residual.** That residual is a **1651-superset** number, like
+everything in this section; on the 1355-page benchmark slice the same run scores TEDS **92.75 vs 92.76 —
+parity** (headline). The superset's table-heavy `table_hard` pages are what the −2.40 is made of.
 
 ### Per-category preservation vs the published per-category numbers (§2.2)
 
