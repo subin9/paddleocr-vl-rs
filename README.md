@@ -47,11 +47,30 @@ repo is the document pipeline built on top of them.
 
 ## Status / correctness
 
+**OmniDocBench v1.5, full run** — the primary result. On the benchmark's 1355 `v1.5` pages, the port
+reaches published parity on every metric except formula:
+
+| metric | this port | published PaddleOCR-VL-1.5 | |
+|---|---|---|---|
+| text Edit ↓ | **0.0328** | 0.035 | parity |
+| table TEDS ↑ | **92.75** | 92.76 | parity |
+| reading-order Edit ↓ | **0.0415** | 0.042 | parity |
+| formula CDM ↑ | **91.77** | 94.21 | **−2.44 — the one gap** |
+| **Overall** ↑ | **93.75** | 94.50 | −0.75, entirely from formula |
+
+The shipped `OmniDocBench.json` is a 1651-page *superset* (it bundles 296 adversarial `*_hard` pages
+that are not on the leaderboard); scoring the superset instead gives the pessimistic text 0.0368 /
+TEDS 90.36 / RO 0.0434. Both columns, the evidence for the 1355-page reading, and the caveat that it
+is an inference (the leaderboard does not publish its page list) are in
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
 - Token-for-token greedy parity vs the transformers-5.13 reference across a **9-item corpus** (plain
   text, tables, formulas, spotting, seal, chart, CJK, low-quality scan, 2-column), on **both
   CPU-f32 and GPU-bf16**. 9/9 match golden token ids.
 - Layout stage: Rust preprocess+run+decode matches an onnxruntime reference within ~0.05 px on the
   sample page (resampler drift only). See `tests/parity_layout.rs`.
+- Load-once recognition is gated on byte-identical output vs the per-page path (24 pages / 189 crops /
+  all 22 layout classes, **24/24 identical**) — a speed mode that changes a token is a bug.
 
 ## Quick start
 
@@ -78,17 +97,26 @@ Run the layout stage on one page (writes crops + `manifest.json`):
 
 Build the recognition step against mistral.rs. The recognition stage needs **both** upstream PRs:
 #2320 (the PaddleOCR-VL model) and #2319 (the OTSL detok fix — without it the table tokens
-`<fcel>`/`<nl>` are dropped and tables collapse to run-on text). Until they land upstream, build
-mistral.rs from the fork branch `subin9:master`, which has both applied plus the `PADDLEOCR_VL_GPU`
-recognize toggle used below. (The `subin9:paddleocr-vl-upstream` branch carries only the #2320
-model, so tables and the GPU toggle would be missing.) Drop `examples/recognize.rs` into a small
-binary crate that depends on `mistralrs` (or into `mistralrs/examples/`), then:
+`<fcel>`/`<nl>` are dropped and tables collapse to run-on text). Both are still open, and the fork
+carries **one each**, so you need both applied:
+
+```bash
+git remote add subin9 https://github.com/subin9/mistral.rs.git && git fetch subin9
+git checkout subin9/paddleocr-vl-upstream        # PR #2320 — the model
+git merge subin9/fix-toktrie-special-flag        # PR #2319 — the detok fix
+```
+
+They touch disjoint code and combine without conflict. Then drop `examples/recognize.rs` from this
+repo into a small binary crate that depends on `mistralrs` (or into `mistralrs/examples/`) — it is
+what provides the `PADDLEOCR_VL_GPU` toggle and the load-once `--list` mode used below:
 
 ```bash
 # CPU/f32 (deterministic parity path):
 PADDLEOCR_VL_WEIGHTS=/path/to/PaddleOCR-VL-1.5 recognize out/
 # GPU/bf16 (needs a --features cuda,flash-attn mistral.rs build):
 PADDLEOCR_VL_GPU=1 PADDLEOCR_VL_WEIGHTS=/path/to/PaddleOCR-VL-1.5 recognize out/
+# Many pages: load the ~1.9GB checkpoint once, not once per page.
+PADDLEOCR_VL_GPU=1 PADDLEOCR_VL_WEIGHTS=... recognize --list pages.txt   # one page dir per line
 ```
 
 Reassemble the reading-order markdown:
@@ -116,15 +144,25 @@ residual) are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md). Honest summary:
 - Fused vision + LM attention (Sdpa/flash) closes most of the GPU prefill gap; the residual is
   candle's dense vision GEMM/MLP vs torch's oneDNN/cuBLAS -- a candle-maturity ceiling, not claimed
   closed.
+- **llama.cpp is faster per page, and we report that plainly: 2.7x.** Same box, same 118-page
+  sample, same crops, **bf16 on both sides**, layout cost charged to both. Median page **8.42s**
+  (this port, load-once) vs **3.1s** (llama.cpp + layout). Deleting the per-page checkpoint reload
+  took us 10.0s -> 8.42s and 3.2x -> 2.7x; the rest is **0.50s/crop vs 0.12s/crop** of recognition,
+  i.e. the candle vision-GEMM ceiling above. Magnitude is workload-specific (compute-bound vision
+  prefill, short OCR outputs) — the port's edge is a Python-free single binary that reproduces the
+  model's accuracy, not throughput.
 - Region **batching buys nothing** here (vision runs per-image regardless); recommended batch size
   is 1. Leakage-free, but no throughput win. Details and data in the benchmarks doc.
 
 An earlier "1.44x / 1.88x faster" claim was withdrawn -- it measured an unfair, uncached baseline.
+An earlier 3.2x-vs-llama.cpp figure was superseded by 2.7x after the reload was deleted, and a 17s/page
+Rust median was retracted as a thrashing-box artifact.
 
 ## Roadmap
 
-See [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md): OmniDocBench accuracy-preservation run, assembler
-class-mapping expansion, residual kernel work, and `cu_seqlens` packed-vision batching.
+See [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md): the formula CDM gap (the one metric off parity),
+root-causing the runaway generation, the candle vision-GEMM lever (and a micro-benchmark to size it),
+assembler class-mapping expansion, and `cu_seqlens` packed-vision batching.
 
 ## License and attribution
 
