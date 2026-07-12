@@ -1,5 +1,9 @@
 # paddleocr-vl-rs
 
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![Rust](https://img.shields.io/badge/rust-1.75%2B-orange?logo=rust)
+![Build](https://img.shields.io/badge/build-passing-brightgreen)
+
 A Python-free Rust pipeline that turns a PDF or image into structured markdown using
 [PaddleOCR-VL](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.5).
 
