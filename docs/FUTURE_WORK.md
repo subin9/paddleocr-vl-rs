@@ -33,9 +33,12 @@ was an artifact of reading all-1651 attribute rows against a v1.5-only deficit.
   would need the reference transformers implementation scored per-language on the same crops.
 
 **Do not chase:** the scorer's own `\begin{array}` merge emits invalid nested `\[…\]` on 224/1807
-predictions (mean CDM 0.6479 vs 0.8101). It is upstream, it hits the reference model identically, and
-"fixing" it means patching the official scorer to raise our own number. Documented in BENCHMARKS.md
-§2.4, deliberately not actioned.
+predictions. It is upstream (it hits the reference model identically — our delimiter choice provably
+cannot affect it), and it is **worth +0.03 CDM**: re-running CDM on all 217 affected predictions with
+the nesting removed and the content held fixed moves the mean 0.6587 → 0.6608, **+0.0022**, with 29
+improved and 20 *worse*. xelatex recovers from it. Those 224 score low (0.6479) because they are
+**over-segmented**, not because of the nesting. Documented in BENCHMARKS.md §2.4, deliberately not
+actioned.
 
 ## Cross-stack residual: llama.cpp is −0.30 TEDS / +0.0094 formula-edit vs the Rust port
 

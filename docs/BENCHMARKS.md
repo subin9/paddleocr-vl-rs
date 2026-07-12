@@ -802,15 +802,17 @@ mutli_formula = '\\begin{array}{l} ' + mutli_formula + ' \end{array}'
 
 `.strip('$$')` strips **`$`** characters only — it does not strip `\[`/`\]`. The merged string is
 therefore `\begin{array}{l} {\[x\]} \\ {\[y\]} \end{array}`, and **`\[` nested inside an array is
-invalid LaTeX**. This fires on **224 of 1807** predictions (12.4%), which average CDM **0.6479** against
-0.8101 overall.
+invalid LaTeX**. This fires on **224 of 1807** predictions (12.4%), and those 224 average CDM **0.6479**
+against 0.8101 overall — which looks exactly like a smoking gun.
 
-It *looks* like ours: the reference pipeline rewrites `\[`→`$$` (PaddleX
-`pipelines/paddleocr_vl/pipeline.py:589-590`) while we emit the model's raw `\[...\]` verbatim
-(`src/assemble.rs:75`). **But switching our delimiter to `$$` is a provable no-op**, and this was
-checked against the real scorer *before* any code was written: `utils/extract.py:220` normalizes
+**It is not one, on either of two independent counts.**
+
+**(1) Our delimiter is irrelevant — switching it is a provable no-op.** The reference pipeline rewrites
+`\[`→`$$` (PaddleX `pipelines/paddleocr_vl/pipeline.py:589-590`) while we emit the model's raw `\[...\]`
+verbatim (`src/assemble.rs:75`), so the bug *looks* like ours. But `utils/extract.py:220` normalizes
 `$$x$$` **back to** `\[x\]`, and `utils/match.py:57` feeds that *extracted* content — not the raw
-markdown — into the merge. Both forms arrive identically:
+markdown — into the merge. Checked against the real scorer *before* any code was written; both forms
+arrive identically:
 
 ```
 OURS  (\[..\]) extracted -> ['\[E = mc^2\]', '\[F = ma\]']
@@ -818,10 +820,28 @@ REF   ($$..$$) extracted -> ['\[ E = mc^2 \]', '\[ F = ma \]']
 both merge to  ->  \begin{array}{l} {\[E = mc^2\]} \\ {\[F = ma\]} \end{array}    # invalid, BOTH
 ```
 
-So the artifact hits the **reference model identically** and cannot be part of a gap *against* it. The
-same nesting also corrupts **26 GT** strings (mean CDM 0.547). Fixing it would mean patching the
-official scorer to raise our own number, which is exactly what we do not do. **Recorded as an upstream
-(i) metric artifact; not chased, and no code changed on the strength of it.**
+The artifact hits the **reference model identically** and so cannot be part of a gap *against* it. (It
+also corrupts **26 GT** strings — everyone's problem.)
+
+**(2) The invalid nesting costs almost nothing anyway — measured, not assumed.** We re-ran CDM on all
+**217** affected predictions (those with a nested pred and a clean GT), holding gt and pred content
+fixed and changing *only* the nesting:
+
+| | mean CDM | exact zeros |
+|---|---|---|
+| as-is (`\[` nested in the array, what the scorer builds) | 0.6587 | 14 |
+| un-nested (valid array, identical content) | **0.6608** | 12 |
+| **delta** | **+0.0022** | −2 |
+
+29 improved, 20 got *worse*, 168 unchanged. **xelatex recovers from the bad nesting**, so the construct
+is cosmetically invalid but numerically harmless — worth **+0.03 CDM** across the whole set if it were
+fixed. **The 0.6479 is therefore NOT caused by the nesting.** Those 224 score low because they are the
+**over-segmented** cases — our pipeline emitted more than one formula region where the GT annotates one
+— and over-segmented predictions are simply harder to match. That is a layout-stage property, and it is
+shared by the llama.cpp run (same crops, same layout), which lands slightly *worse* on formulas overall.
+
+**Recorded as an upstream (i) metric artifact. Not chased, and no code changed on the strength of it** —
+fixing it would mean patching the official scorer to raise our own number, and it would buy +0.03.
 
 **Residual, stated plainly:** 12 of the 67 zeros are formulas our pipeline emitted **nothing** for (a
 layout miss — the GT formula region was never detected). That is ours, but it is 0.66% of formulas and
