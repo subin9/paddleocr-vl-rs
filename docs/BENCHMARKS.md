@@ -401,6 +401,12 @@ therefore printed above; nothing is hidden. Every downstream section still carri
 **Verdict per metric:** text **PRESERVED** · reading-order **PRESERVED** · table **PRESERVED** ·
 formula **GAP of −2.44 CDM** (the only remaining divergence; see §2.4 below).
 
+The formula gap is **root-caused** (§2.4): it is a **CJK-formula** gap — within v1.5, Chinese formula
+pages score CDM 0.8730 vs 0.9349 for English, and at 28% of formula-bearing pages they account for
+1.72 of the 2.44 points. It is **not a port defect**: llama.cpp, an independent stack on the same
+crops, reproduces the same CJK penalty. So all four metrics are consistent with a faithful port; the
+formula deficit is the model's, not the translation's.
+
 ### Historical (1651-superset scoring — superseded by the table above, kept for audit)
 
 | run | Overall | Text-Edit | Formula(metric) | Table-TEDS / -S | ReadOrder-Edit | verdict |
@@ -730,9 +736,96 @@ compiles with 0 undefined control sequences and emits exact `(255,0,0)`/`(0,255,
 already-scored 0.2490 — proving the CDM run scored the pipeline we think it did, not a stale or
 mismatched prediction set.
 
-**The gap is real and is NOT a scoring artifact** (the gate rules that out). It is not yet root-caused;
-worst CDM slices are `fuzzy_content` 0.307, `equation_hard` 0.572, `with_watermark` 0.564 — i.e.
-degraded//low-contrast inputs. Logged to FUTURE_WORK rather than hand-waved.
+**The gap is real and is NOT a scoring artifact** (the gate rules that out).
+
+#### Root cause of the −2.44: it is a **CJK-formula** gap, and it is the model's, not the port's
+
+An earlier draft of this section attributed the gap to *"degraded/low-contrast inputs — `fuzzy_content`
+0.307, `equation_hard` 0.572, `with_watermark` 0.564"*. **That was a like-for-like error and is
+withdrawn.** Those are `ALL`-row (1651-page) attribute figures, but the −2.44 is a deficit *within*
+`subset: v1.5`. `subset` is an **exclusive partition** of the 1651 pages — v1.5 (1355) / equation_hard
+(100) / layout_hard (99) / table_hard (97), verified: zero pages carry two values — so
+**`equation_hard` and `table_hard` contribute *nothing* to the −2.44 by construction.** They cannot be
+its cause.
+
+Re-derived from `results/otslhtml1651_quick_match_display_formula_per_sample_CDM.json` (n=1807
+formulas) joined to the GT page attributes, using the scorer's own reduction (mean within page, then
+across pages). The reconstruction reproduces the scorer **exactly** — `ALL` 0.8090 and `subset: v1.5`
+0.9177, both to 4 dp — which is what licenses the breakdown below.
+
+Within v1.5, `language` is a clean partition of the 205 formula-bearing pages (148 + 57 = 205):
+
+| slice (within v1.5) | formula-bearing pages | CDM ↑ |
+|---|---|---|
+| `language: english` | 148 (72%) | **0.9349** |
+| `language: simplified_chinese` | 57 (28%) | **0.8730** |
+| **weighted → `subset: v1.5`** | **205** | **0.9177** ✓ *reproduces the scorer* |
+
+**CJK formulas score 6.2 CDM points below English ones, and they are 28% of the benchmark's
+formula-bearing pages — so they account for 1.72 of the 2.44 points (70%).** Had our CJK matched our
+own English, v1.5 CDM would be 93.49, leaving a 0.72-pt residual (30%) spread across English pages.
+No degraded-input slice within v1.5 is large enough to matter: the low ones are `data_source: note`
+(0.654, **n=5**) and `special_issue: fuzzy_scan` (0.820, **n=4**); `watermark` is 0.9057 (n=8) —
+*above* the v1.5 mean, i.e. the opposite of the withdrawn story.
+
+**Classification: (iv) genuine model difficulty. A port defect (iii) is ruled out by cross-stack
+evidence.** llama.cpp — an entirely independent implementation of the same weights — was run over the
+**same crops** (§2.6) and **reproduces the CJK formula penalty**:
+
+| stack | display_formula Edit ↓ (english) | (simplified_chinese) | CJK penalty |
+|---|---|---|---|
+| **ours (Rust port)** | 0.2378 | 0.2765 | **+0.0387** |
+| **llama.cpp** (independent) | 0.2507 | 0.2819 | **+0.0311** |
+
+Both stacks degrade on Chinese formulas by a comparable margin, and llama.cpp is in fact *slightly
+worse* on formulas overall (`ALL` 0.2600 vs our 0.2490). A CJK-specific defect in *our* port could not
+survive that test — llama.cpp would not reproduce it. The weakness is in the model's formula head on
+CJK content.
+
+**Honest limit on this claim:** the published 94.21 is an **all-pages** figure with no language split,
+so we cannot check whether the *reference implementation* also drops on CJK formulas. What the evidence
+establishes is narrower, and is all we assert: **the CJK formula weakness is not introduced by this
+port.** Whether the published pipeline somehow avoids it is not something the published number can
+answer.
+
+#### One format artifact was found, measured, and is **upstream — not ours to fix**
+
+The per-formula CDM distribution is bimodal — 57.7% score a perfect 1.0, but **67 (3.7%) are exact
+zeros**. Chasing the zeros surfaced a real defect, though not one we can act on. When more than one
+predicted formula matches a single GT formula, the scorer merges them
+(`utils/match_quick.py:568-570`):
+
+```python
+mutli_formula = ' \\\\ '.join(['{'+ori_pred_lines[_].strip('$$').strip('\n')+'}' ...])
+mutli_formula = '\\begin{array}{l} ' + mutli_formula + ' \end{array}'
+```
+
+`.strip('$$')` strips **`$`** characters only — it does not strip `\[`/`\]`. The merged string is
+therefore `\begin{array}{l} {\[x\]} \\ {\[y\]} \end{array}`, and **`\[` nested inside an array is
+invalid LaTeX**. This fires on **224 of 1807** predictions (12.4%), which average CDM **0.6479** against
+0.8101 overall.
+
+It *looks* like ours: the reference pipeline rewrites `\[`→`$$` (PaddleX
+`pipelines/paddleocr_vl/pipeline.py:589-590`) while we emit the model's raw `\[...\]` verbatim
+(`src/assemble.rs:75`). **But switching our delimiter to `$$` is a provable no-op**, and this was
+checked against the real scorer *before* any code was written: `utils/extract.py:220` normalizes
+`$$x$$` **back to** `\[x\]`, and `utils/match.py:57` feeds that *extracted* content — not the raw
+markdown — into the merge. Both forms arrive identically:
+
+```
+OURS  (\[..\]) extracted -> ['\[E = mc^2\]', '\[F = ma\]']
+REF   ($$..$$) extracted -> ['\[ E = mc^2 \]', '\[ F = ma \]']
+both merge to  ->  \begin{array}{l} {\[E = mc^2\]} \\ {\[F = ma\]} \end{array}    # invalid, BOTH
+```
+
+So the artifact hits the **reference model identically** and cannot be part of a gap *against* it. The
+same nesting also corrupts **26 GT** strings (mean CDM 0.547). Fixing it would mean patching the
+official scorer to raise our own number, which is exactly what we do not do. **Recorded as an upstream
+(i) metric artifact; not chased, and no code changed on the strength of it.**
+
+**Residual, stated plainly:** 12 of the 67 zeros are formulas our pipeline emitted **nothing** for (a
+layout miss — the GT formula region was never detected). That is ours, but it is 0.66% of formulas and
+is not what the −2.44 is made of. Logged to FUTURE_WORK.
 
 ### Cross-stack: the same crops through llama.cpp (§2.6)
 

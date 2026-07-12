@@ -2,19 +2,40 @@
 
 Honest roadmap. Each item lists why it is valuable and what the hard part actually is.
 
-## Formula CDM −2.44 vs published — the one metric not at parity
+## Formula CDM −2.44 vs published — ROOT-CAUSED as a CJK-formula gap; **not a port defect**
 
-**Why:** every other benchmark metric reaches published parity (text, reading-order, table); formula
-CDM is **91.77 vs 94.21** and is therefore the whole of the −0.75 `Overall` deficit. It is **not** a
-scoring artifact — the CDM renderer is gated by `cdm_smoke.py`, which proves it discriminates
-(identical formula F1 = 1.0, truncated F1 = 0.6) rather than silently returning 0. **Hard part:** the
-worst slices are *degraded inputs* (`fuzzy_content` 0.307, `with_watermark` 0.564), which points at
-the crop/preprocessing path (resize, interpolation, normalization) rather than the LM — but the
-cross-stack A/B complicates that story: llama.cpp, with an entirely different image pipeline, scores
-formula edit-distance **worse** than us (0.1927 vs 0.1833), not better. So a naive "our preprocessing
-is lossy" hypothesis does not survive first contact. Next probe: score the *reference transformers*
-implementation's formula CDM on the same crops — that separates "our crops are worse" from "this
-0.9B model is simply weak on degraded formulas".
+**Status: diagnosed, and closed as (iv) genuine model difficulty.** Kept here because the *number* is
+still open (91.77 vs 94.21, the whole of the −0.75 `Overall` deficit), not because the *cause* is.
+Full evidence in BENCHMARKS.md §2.4.
+
+**What it is.** Within `subset: v1.5` — the only slice the −2.44 is measured on — `language` partitions
+the 205 formula-bearing pages cleanly: english (148 pg) CDM **0.9349**, simplified_chinese (57 pg) CDM
+**0.8730**, weighted → 0.9177, which reproduces the scorer to 4 dp. **CJK formulas are 6.2 CDM points
+below English and are 28% of formula pages, so they are 1.72 of the 2.44 (70%).**
+
+**Why it is not ours.** llama.cpp — an independent implementation of the same weights, over the same
+crops — **reproduces the CJK penalty** (its formula-edit CJK-vs-EN penalty is +0.0311; ours is +0.0387)
+and is slightly *worse* on formulas overall (0.2600 vs 0.2490). A CJK-specific defect in our port could
+not survive that. The model's formula head is simply weaker on Chinese content.
+
+**The previous entry here was wrong and is withdrawn.** It blamed *degraded inputs* (`fuzzy_content`
+0.307, `with_watermark` 0.564) and proposed probing the crop/preprocessing path. Those are `ALL`-row
+(1651-page) figures; the `*_hard` subsets are **disjoint** from v1.5 and contribute nothing to the
+−2.44, and within v1.5 `watermark` actually scores 0.9057 — *above* the mean. The degraded-input story
+was an artifact of reading all-1651 attribute rows against a v1.5-only deficit.
+
+**What is actually left (small, and honestly bounded).** Two real residuals, neither of which is the
+−2.44:
+- **12 formulas (0.66%) our pipeline emitted nothing for** — a layout miss, the GT formula region was
+  never detected. Ours. Worth a look; too small to move the metric.
+- **The published 94.21 has no language split**, so we cannot verify whether the reference pipeline
+  *also* drops on CJK formulas. We can only show the drop is not introduced by this port. Settling that
+  would need the reference transformers implementation scored per-language on the same crops.
+
+**Do not chase:** the scorer's own `\begin{array}` merge emits invalid nested `\[…\]` on 224/1807
+predictions (mean CDM 0.6479 vs 0.8101). It is upstream, it hits the reference model identically, and
+"fixing" it means patching the official scorer to raise our own number. Documented in BENCHMARKS.md
+§2.4, deliberately not actioned.
 
 ## Cross-stack residual: llama.cpp is −0.30 TEDS / +0.0094 formula-edit vs the Rust port
 
