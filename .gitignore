@@ -57,3 +57,7 @@ __pycache__/
 PROGRESS.md
 /run_*.sh
 /.local_prep_state.md
+
+# benchmark scorer logs (results JSON is the artifact)
+bench/omnidocbench/results/*.scorer.log
+bench/omnidocbench/results/*.log
