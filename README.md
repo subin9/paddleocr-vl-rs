@@ -47,16 +47,28 @@ repo is the document pipeline built on top of them.
 
 ## Status / correctness
 
-**OmniDocBench v1.5, full run** — the primary result. On the benchmark's 1355 `v1.5` pages, the port
-reaches published parity on every metric except formula:
+**OmniDocBench v1.5, full run** — the primary result. The same weights on the benchmark's 1355 `v1.5`
+pages, scored by the official scorer, across three stacks: the **published** PaddleOCR-VL-1.5 figures,
+the same model run through **llama.cpp** (an independent C++ implementation, used as a cross-stack
+control), and **this** Rust port.
 
-| metric | this port | published PaddleOCR-VL-1.5 | |
+| metric | published PaddleOCR-VL-1.5 | llama.cpp | this port |
 |---|---|---|---|
-| text Edit ↓ | **0.0328** | 0.035 | parity |
-| table TEDS ↑ | **92.75** | 92.76 | parity |
-| reading-order Edit ↓ | **0.0415** | 0.042 | parity |
-| formula CDM ↑ | **91.77** | 94.21 | **−2.44 — the one gap** |
-| **Overall** ↑ | **93.75** | 94.50 | −0.75, entirely from formula |
+| text Edit ↓ | 0.035 | 0.0325 | **0.0328** |
+| reading-order Edit ↓ | 0.042 | 0.0414 | **0.0415** |
+| table TEDS ↑ | 92.76 | 92.45 | **92.75** |
+| formula CDM ↑ | 94.21 | 90.21 | **91.77** |
+| **Overall** ↑ | 94.50 | 93.14 | **93.75** |
+
+Accuracy is preserved against the reference on text, reading order and tables. The single gap is
+**formula CDM (−2.44)**, and it is the model's difficulty with CJK formulas rather than a defect in
+this port: llama.cpp — a wholly separate inference stack on the same checkpoint — reproduces the gap,
+and in fact scores *lower* (90.21). Methodology, per-category breakdown and speed:
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
+Every cell is the `page` reduction of the `subset: v1.5` slice, read from the scorer's result JSON in
+`bench/omnidocbench/results/`. `Overall` is the benchmark's own
+`((1 − text_Edit) × 100 + table_TEDS + formula_CDM) / 3`, applied identically to both measured columns.
 
 The shipped `OmniDocBench.json` is a 1651-page *superset* (it bundles 296 adversarial `*_hard` pages
 that are not on the leaderboard); scoring the superset instead gives the pessimistic text 0.0368 /
@@ -97,18 +109,19 @@ Run the layout stage on one page (writes crops + `manifest.json`):
 
 Build the recognition step against mistral.rs. The recognition stage needs **both** upstream PRs:
 #2320 (the PaddleOCR-VL model) and #2319 (the OTSL detok fix — without it the table tokens
-`<fcel>`/`<nl>` are dropped and tables collapse to run-on text). Both are still open, and the fork
-carries **one each**, so you need both applied:
+`<fcel>`/`<nl>` are dropped and tables collapse to run-on text). Both are still open upstream, so
+until they land, build from the branch that carries the two of them on top of the upstream base:
 
 ```bash
-git remote add subin9 https://github.com/subin9/mistral.rs.git && git fetch subin9
-git checkout subin9/paddleocr-vl-upstream        # PR #2320 — the model
-git merge subin9/fix-toktrie-special-flag        # PR #2319 — the detok fix
+git clone https://github.com/subin9/mistral.rs.git && cd mistral.rs
+git checkout paddleocr-vl-pipeline    # = upstream + #2320 (model) + #2319 (detok fix)
 ```
 
-They touch disjoint code and combine without conflict. Then drop `examples/recognize.rs` from this
-repo into a small binary crate that depends on `mistralrs` (or into `mistralrs/examples/`) — it is
-what provides the `PADDLEOCR_VL_GPU` toggle and the load-once `--list` mode used below:
+The two patches touch disjoint files (the model adds a new arch; the detok fix is one file in
+`mistralrs-core`), so they compose cleanly — that branch is just the two applied in order, with
+nothing else added. Then drop `examples/recognize.rs` from this repo into a small binary crate that
+depends on `mistralrs` (or into `mistralrs/examples/`) — it is what provides the `PADDLEOCR_VL_GPU`
+toggle and the load-once `--list` mode used below:
 
 ```bash
 # CPU/f32 (deterministic parity path):

@@ -772,17 +772,40 @@ No degraded-input slice within v1.5 is large enough to matter: the low ones are 
 
 **Classification: (iv) genuine model difficulty. A port defect (iii) is ruled out by cross-stack
 evidence.** llama.cpp — an entirely independent implementation of the same weights — was run over the
-**same crops** (cross-stack section) and **reproduces the CJK formula penalty**:
+**same crops** (cross-stack section), and it was scored **on CDM, the published metric itself**, not on
+a proxy:
+
+| stack | formula **CDM** ↑ — `subset: v1.5` (like-for-like) | CDM ↑ — all 1651 | vs published 94.21 |
+|---|---|---|---|
+| **published PaddleOCR-VL-1.5** | 94.21 | — | — |
+| **ours (Rust port)** | **91.77** | 80.90 | **−2.44** |
+| **llama.cpp** (independent) | **90.21** | 79.17 | **−4.00** |
+
+**llama.cpp misses the published CDM by 4.00 points — a *wider* miss than our port's 2.44.** An
+independent C++ stack, sharing nothing with this code but the checkpoint, therefore not only reproduces
+the formula gap but reproduces it worse. A defect in *our* port cannot explain a deficit that appears —
+larger — in an implementation that contains none of our code.
+
+This was scored with `data/subsets/cdm_llamacpp1649.end2end.yaml`: the `cdm1651` config with only the
+predictions path swapped to the llama.cpp preds, so the two CDM columns differ in the recognition
+backend and in **nothing else** — same GT, same `quick_match`, same CDM renderer, same `cdm_smoke.py`
+gate (F1 1.0 / 0.6, PASS) run beforehand. Evidence:
+`results/cdm_llamacpp1649_quick_match_metric_result.json`. **Internal control:** that run also re-scored
+`Edit_dist`, which came back **bit-identical** to the already-committed llama.cpp edit-distance result
+(`ALL` 0.259969, `subset: v1.5` 0.192738) — proving the CDM number was computed over the same formula
+set as the earlier run, not a drifted or partially-matched one.
+
+The same conclusion holds on the edit-distance proxy, with the language split CDM's `subset` rows do
+not expose — and it is the CJK slice that carries the penalty in both stacks:
 
 | stack | display_formula Edit ↓ (english) | (simplified_chinese) | CJK penalty |
 |---|---|---|---|
 | **ours (Rust port)** | 0.2378 | 0.2765 | **+0.0387** |
 | **llama.cpp** (independent) | 0.2507 | 0.2819 | **+0.0311** |
 
-Both stacks degrade on Chinese formulas by a comparable margin, and llama.cpp is in fact *slightly
-worse* on formulas overall (`ALL` 0.2600 vs our 0.2490). A CJK-specific defect in *our* port could not
-survive that test — llama.cpp would not reproduce it. The weakness is in the model's formula head on
-CJK content.
+Both stacks degrade on Chinese formulas by a comparable margin, and llama.cpp is *slightly worse* on
+formulas overall (`ALL` 0.2600 vs our 0.2490). The weakness is in the model's formula head on CJK
+content.
 
 **Honest limit on this claim:** the published 94.21 is an **all-pages** figure with no language split,
 so we cannot check whether the *reference implementation* also drops on CJK formulas. What the evidence
