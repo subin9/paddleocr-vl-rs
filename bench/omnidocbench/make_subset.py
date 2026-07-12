@@ -53,7 +53,7 @@ def main(stems_file, name):
         }
     }
     # minimal YAML writer (avoid a pyyaml dep in this repo's python; the scorer venv has it but
-    # this script may run under any python). ponytail: json is valid yaml, so dump json.
+    # this script may run under any python). json is valid yaml, so dump json.
     cfg_path = os.path.join(outdir, f"{name}.end2end.yaml")
     json.dump(cfg, open(cfg_path, "w"), ensure_ascii=False, indent=2)
     print(f"subset '{name}': {len(subset)} pages")

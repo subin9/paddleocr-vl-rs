@@ -1,6 +1,6 @@
 //! Reference-layout parity: the shipped `ref_postprocess()` vs PaddleX's own post-processing.
 //!
-//! The §2.5 layout probe found the port defect: our ONNX stage reproduces PP-DocLayoutV3's RAW
+//! The layout probe found the port defect: our ONNX stage reproduces PP-DocLayoutV3's RAW
 //! detector faithfully, but the paper's number comes from the reference PIPELINE, which runs the
 //! same weights through post-processing we had none of (threshold 0.3, `layout_nms`, per-class
 //! `layout_merge_bboxes_mode`, `filter_overlap_boxes`). `ref_postprocess()` ports that. A port of

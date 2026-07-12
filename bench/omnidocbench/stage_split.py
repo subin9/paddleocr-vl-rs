@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""§2.7: what IS the Rust pipeline's 12.4s fixed per-page cost?
+"""What IS the Rust pipeline's 12.4s fixed per-page cost?
 
 speed_stats.py fits `seconds ~= intercept + slope*crops` over the full run and gets a ~12s intercept.
 FUTURE_WORK.md asserts the per-page model load is "only ~1.5s", so the intercept cannot be load

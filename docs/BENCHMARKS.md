@@ -147,11 +147,11 @@ explicitly not a SOTA-speed claim.
 
 **How that held up:** preservation confirmed on three of four metrics, one real gap (formula CDM)
 reported rather than buried — and the deployment-not-throughput claim survived contact with the
-llama.cpp cross-check, which the port **loses** by 2.7x (§2.7–§2.8). Two divergences we *did* find
-turned out to be defects in our own glue, not in the ported weights (layout post-processing §2.5a,
-table HTML §2.3), which is exactly the outcome the pre-registration said to look for.
+llama.cpp cross-check, which the port **loses** by 2.7x (see the speed sections). Two divergences we
+*did* find turned out to be defects in our own glue, not in the ported weights (layout
+post-processing, table HTML), which is exactly the outcome the pre-registration said to look for.
 
-## Methodology (recon — recorded before any run)
+## Methodology (recorded before any run)
 
 **Benchmark.** OmniDocBench — [opendatalab/OmniDocBench](https://github.com/opendatalab/OmniDocBench)
 (CVPR 2025). Code license **Apache-2.0**. Bilingual zh/en, 9 document types (academic papers,
@@ -202,7 +202,7 @@ textbooks, financial reports, exam papers, ...).
   The scorer is pure-CPU post-processing, so it gets a **separate** venv; it never shares the
   inference env. (CDM formula metric needs an extra env; `CDM_plain` in the config exports the CDM
   input JSON without it — decide at subset time whether to stand up full CDM or accept `CDM_plain`.)
-- **CDM decision — RESOLVED (Iter-12): scored with `Edit_dist`, not CDM.** Probed the scorer-venv:
+- **CDM decision — RESOLVED: scored with `Edit_dist`, not CDM.** Probed the scorer-venv:
   `CDM` is in `METRIC_REGISTRY` and `latex2bbox_color` imports OK, **but the box has no LaTeX
   toolchain** — `pdflatex`/`xelatex`/`latex`/`dvisvgm` all missing (only `node` present), so CDM's
   render step would fail at runtime. Upstream requires a dedicated CDM environment (README recommends
@@ -237,7 +237,7 @@ textbooks, financial reports, exam papers, ...).
 | **PaddleOCR-VL-1.5** | **94.50** | 0.035 | 94.21 | 92.76 | 95.79 | 0.042 |
 | PaddleOCR-VL (v1.0)  | 92.86 | 0.035 | 91.22 | 90.89 | 94.76 | 0.043 |
 
-**Independently re-verified 2026-07-11 (§2.4)** — not trusted from this doc or from memory. The rows
+**Independently re-verified 2026-07-11** — not trusted from this doc or from memory. The rows
 above were re-extracted **verbatim from the raw arXiv HTML table markup** of
 [2601.21957v1](https://arxiv.org/html/2601.21957v1) (Table 2, *"Comprehensive evaluation on
 OmniDocBench v1.5"*), by parsing `<tr>` cells rather than reading a summary:
@@ -273,7 +273,7 @@ their own per-metric cells to ±0.01, so the numbers are self-consistent and cor
 **This is the target the Rust port must land within noise of.** PRESERVED = overall within scorer
 noise of 94.50; DIVERGES = otherwise, reported with the per-doc-type breakdown.
 
-## Plumbing validation (§2.2, n=5) — integration proven, NOT an accuracy verdict
+## Plumbing validation (n=5) — integration proven, NOT an accuracy verdict
 
 The 5-page slice exists to de-risk the *integration* (our markdown → the official scorer's input),
 not to measure accuracy. **Do not read these numbers as the reference comparison** — n=5,
@@ -302,7 +302,7 @@ stratified subset and full run.
   through verbatim; the scorer's `display_reg`/`inline_reg` catch them. Aligned — no fix. (Earlier
   worry that formulas were unwrapped was wrong; the model wraps them.)
 - **Figure/chart regions OCR to junk → FIXED (`VISUAL_ONLY_CLASSES` skip in `src/assemble.rs`).**
-  Chart crops (scatter plots) transcribe as long `col | val` numeric dumps. Measured effect, in-session
+  Chart crops (scatter plots) transcribe as long `col | val` numeric dumps. Measured effect, direct
   A/B (assemble the SAME `results.json` with vs without the skip, score both back-to-back — isolates the
   one code change; only the academic page has charts, so only it moves):
 
@@ -316,7 +316,7 @@ stratified subset and full run.
   and as *text* (wrecking text_block + reading order). Dropping `chart`/`image`/`seal`/`*_image` (all
   visual-only, no GT text/table/formula counterpart) fixes it. Overall smoke5 text_block 0.276 → 0.077.
   (The reference emits image placeholders the scorer strips; a skip is equivalent for scoring.)
-  Recognition still *runs* on these crops today; skipping that too is a later speed win (§2.4/2.5).
+  Recognition still *runs* on these crops today; skipping that too is a later speed win.
 - **book text_block 0.339 (remaining, separate nuance):** standalone `inline_formula` regions come
   back wrapped as display `\[…\]` — a minor dialect mismatch, not chart pollution. Tracked in FUTURE_WORK.
 
@@ -337,13 +337,13 @@ file named after YOUR prediction dir (here `smoke5_quick_match_metric_result.jso
 | reading_order Edit_dist | 0.000 | — | — |
 
 **Reproducibility confirmed:** the pipeline (layout+recognize) is deterministic (re-ran newspaper page:
-0/17 regions differ, manifest identical) and the scorer is deterministic (2× identical). Iter-5's
-committed no-skip numbers reproduce byte-for-byte in-session. Numbers are sane and non-degenerate.
+0/17 regions differ, manifest identical) and the scorer is deterministic (2× identical). The
+committed no-skip numbers reproduce byte-for-byte on re-run. Numbers are sane and non-degenerate.
 This slice proves the integration AND the visual-skip fix; it is NOT the accuracy verdict (n=5).
 
 ## Our measured scores
 
-### HEADLINE (§2.4, 2026-07-12) — the benchmark is 1355 pages, not 1651. On it, the port is at parity.
+### HEADLINE (2026-07-12) — the benchmark is 1355 pages, not 1651. On it, the port is at parity.
 
 **Read this before any number below it.** Every score in the sections that follow was computed over
 all **1651** pages in the shipped `OmniDocBench.json`. That file is a **superset of the benchmark**:
@@ -399,9 +399,9 @@ therefore printed above; nothing is hidden. Every downstream section still carri
 1651-page numbers, which are the **pessimistic** ones.
 
 **Verdict per metric:** text **PRESERVED** · reading-order **PRESERVED** · table **PRESERVED** ·
-formula **GAP of −2.44 CDM** (the only remaining divergence; see §2.4 below).
+formula **GAP of −2.44 CDM** (the only remaining divergence; see the formula section below).
 
-The formula gap is **root-caused** (§2.4): it is a **CJK-formula** gap — within v1.5, Chinese formula
+The formula gap is **root-caused** (formula section, below): it is a **CJK-formula** gap — within v1.5, Chinese formula
 pages score CDM 0.8730 vs 0.9349 for English, and at 28% of formula-bearing pages they account for
 1.72 of the 2.44 points. It is **not a port defect**: llama.cpp, an independent stack on the same
 crops, reproduces the same CJK penalty. So all four metrics are consistent with a faithful port; the
@@ -417,12 +417,12 @@ formula deficit is the model's, not the translation's.
 | **paper reference** | 94.50 | 0.035 | CDM 94.21 | 92.76 / 95.79 | 0.042 | target (on **1355**, not 1651) |
 
 Speed (secondary) was measured, but **against llama.cpp, not against a transformers full-page floor**
-— see §2.7–§2.8 for the per-page and per-stage numbers. The transformers reference was never run over
+— see the speed sections for the per-page and per-stage numbers. The transformers reference was never run over
 the full page set; only the single-crop latency microbenchmarks above exist for it. That remains a
 **gap we state rather than estimate**, and it is why no "vs transformers, end-to-end" row appears
 anywhere in this doc.
 
-### Stratified subset (n=150) — result + verdict (§2.3)
+### Stratified subset (n=150) — result + verdict
 
 Scored by the official `pdf_validation.py` (eval pin `59b103c`, `quick_match`) on the 150-page
 stratified subset (`subset150.txt`; simplified_chinese 71 / english 68 / other 11), GPU-bf16, K=1
@@ -457,11 +457,11 @@ Table-TEDS 0.866 aggregate vs paper 0.928 is the widest standard-category gap (a
 TEDS 0.804, note 0.613 n-small); worth watching on the full set but not a STOP condition.
 
 **Verdict: SANE — proceed to the full 1651 run** (the only apples-to-apples comparison to the paper).
-Not "diverges badly" per §2.3: metrics are non-degenerate, English lands on the paper, and the
+Not "diverges badly": metrics are non-degenerate, English lands on the paper, and the
 elevated aggregate is explained by intentional hard-case stratification. The full-set overall vs
 94.50 (with the same Edit-proxy caveat, or full CDM if a LaTeX env is stood up) is the accuracy verdict.
 
-### Full set (n=1651) vs published — side-by-side and VERDICT (§2.4)
+### Full set (n=1651) vs published — side-by-side and VERDICT
 
 Scored by the official `pdf_validation.py` (eval pin `59b103c` + the upstream dangling-anno-id guard,
 `quick_match`, config `full1651.end2end.yaml`), GPU-bf16, K=1 serial recognition. Result JSON:
@@ -509,12 +509,13 @@ That section argued the gap was "subset-composition-driven, not a port defect", 
    0.0338 — the subset's 68 English pages were an easy draw, not a representative one.
 
 The composition explanation is therefore withdrawn. The gap is **present in the aggregate the paper
-actually reports**, and §2.5 must attribute it (layout/reading-order vs in-crop recognition vs
-assembly), not explain it away. Known assembly-side contributor already found in §2.2: the assembler
+actually reports**, and the attribution work below must localize it (layout/reading-order vs in-crop
+recognition vs assembly), not explain it away. Known assembly-side contributor already found on the
+5-page slice: the assembler
 **emits no text for `image`-class regions** (page `yanbaopptmerge_yanbaoPPT_5885` recognized "流水声" and
 then dropped it), which costs text-edit on every page whose content the layout model labels `image`.
 
-**Worst slices on the full set** (text-edit ↓, page-avg) — §2.5 targets:
+**Worst slices on the full set** (text-edit ↓, page-avg) — the attribution targets:
 
 | slice | Text-Edit | ReadOrder-Edit | note |
 |-------|-----------|----------------|------|
@@ -530,10 +531,11 @@ then dropped it), which costs text-edit on every page whose content the layout m
 
 The tight coupling of text-edit and reading-order edit on the worst slices (handwriting,
 O-shaped-wrap, text-embedded-in-image) is the strongest available hint that a **large share of the gap
-is layout/assembly-side, not in-crop recognition** — but that is a hypothesis for §2.5 to test, not a
+is layout/assembly-side, not in-crop recognition** — but that is a hypothesis for the sections below
+to test, not a
 finding. It is recorded here as such.
 
-### REF_LAYOUT: the root cause of the text/reading-order gap, and the default flip (§2.5a)
+### REF_LAYOUT: the root cause of the text/reading-order gap, and the default flip
 
 The divergence above was mostly **not** a VLM port defect. Our layout stage shipped the raw detector's
 own defaults — score threshold **0.5**, no NMS, no per-class box merge — while the reference pipeline
@@ -570,7 +572,7 @@ scored baseline this flip was measured against, so it must stay runnable.
 The omitted post-processing accounts for **79% of the text-edit gap** and **84% of the reading-order
 gap** to the published numbers. Both are now *near* parity but not *at* it. **Table TEDS barely moved
 (+0.002) and is now the dominant remaining divergence (−9.14 pts) — a separate root cause the layout
-fix does not touch** (diagnosis: §2.3, below). Attribution is unchanged and worth stating plainly: this
+fix does not touch** (diagnosis: the table-gap section, below). Attribution is unchanged and worth stating plainly: this
 was a **layout-glue defect in our port, not a change to the ported VLM weights**, and it corroborates
 the independent error budget (layout accounted for 53.4% of text edits; in-crop recognition
 substitutions only 8.1%).
@@ -581,7 +583,7 @@ the same 1649 pages. Reproduce: `PADDLEOCR_VL_RAW_LAYOUT=1` for the baseline arm
 one; scorer logs in `bench/omnidocbench/results/{full1651_nonest2,reflayout1651}.scorer.log`, and both
 arms' scores in the matching `*_quick_match_metric_result.json` beside them.
 
-### The table gap: an assembly/format defect in our port, not a recognition gap (§2.3)
+### The table gap: an assembly/format defect in our port, not a recognition gap
 
 After the layout flip, table TEDS (0.8362 vs published 92.76, **−9.14 pts**) was the dominant remaining
 divergence — and the layout fix had not touched it (+0.002), so it had a separate root cause. Diagnosed
@@ -635,7 +637,7 @@ TEDS −2.40 pts — a real but much smaller residual.** That residual is a **16
 everything in this section; on the 1355-page benchmark slice the same run scores TEDS **92.75 vs 92.76 —
 parity** (headline). The superset's table-heavy `table_hard` pages are what the −2.40 is made of.
 
-### Per-category preservation vs the published per-category numbers (§2.2)
+### Per-category preservation vs the published per-category numbers
 
 Generated by `bench/omnidocbench/per_category_table.py text_block <log>...` (the scorer's
 `*_metric_result.json` ships an **empty** `group` dict, so its printed log is the only source for the
@@ -672,7 +674,7 @@ weak on those pages), not something our port adds. `rel. delta` is recomputed pe
 even where the absolute number does not: it measures a category's *share* of the remaining error, and
 as the total shrinks the survivors' shares grow.
 
-**The table fix (§2.3) resolved `research_report`** — the most table-dense category, 0.0675 → **0.0144**
+**The table fix resolved `research_report`** — the most table-dense category, 0.0675 → **0.0144**
 — which is exactly what a table-rendering defect predicts, and is the strongest independent confirmation
 of that diagnosis: the pipe-table's rows were being read as text lines.
 
@@ -683,7 +685,7 @@ is therefore **layout/reading-order-shaped, not recognition-shaped**, consistent
 (layout 53.4% of edits; in-crop substitutions only 8.1%). This is the target for any further layout
 work; it is *not* evidence of a VLM port defect.
 
-### Formula: scored with CDM, the published metric (§2.4)
+### Formula: scored with CDM, the published metric
 
 The published formula number is **CDM** (Character Detection Matching), not edit distance. Our earlier
 0.2490 was edit distance and was always labelled NOT-COMPARABLE; it is now retired as a proxy. CDM is
@@ -702,7 +704,7 @@ figure (80.90) is *not* the comparable one: 91 of the 313 formula-bearing pages 
 **How it was scored.** No scorer modification — CDM is a config switch the official harness already
 ships (`METRIC_REGISTRY` carries `CDM`; `configs/end2end.yaml` merely defaults to `CDM_plain`).
 Config `data/subsets/cdm1651.end2end.yaml`, `display_formula: [Edit_dist, CDM]`, same raw GT, same
-`quick_match`, preds = the shipped default. Env fix is in `setup_cdm_env.sh` (`3c6740e0`).
+`quick_match`, preds = the shipped default. Env fix is in `setup_cdm_env.sh`.
 
 **Where the evidence is** (every number above is read off a committed file, not off this prose):
 `results/cdm1651_quick_match_metric_result.json` — its `display_formula.page.CDM` block carries the
@@ -718,7 +720,7 @@ destroyed the text/table/reading-order results. Both are therefore kept, under d
 **The gate that makes this number trustworthy.** CDM renders LaTeX to a raster and recovers per-token
 boxes by *exact pixel-colour* lookup, so a broken TeX env silently returns **CDM ≈ 0** through a bare
 `except` — a fabricated, *pessimistic* self-own that every downstream `Overall` would inherit. So CDM
-is gated behind `cdm_smoke.py` (`d32e5394`), which must pass before any score is believed:
+is gated behind `cdm_smoke.py`, which must pass before any score is believed:
 
 ```
 identical formula  F1 = 1.0   (expect 1.0)          <- renderer+matcher work end-to-end
@@ -770,7 +772,7 @@ No degraded-input slice within v1.5 is large enough to matter: the low ones are 
 
 **Classification: (iv) genuine model difficulty. A port defect (iii) is ruled out by cross-stack
 evidence.** llama.cpp — an entirely independent implementation of the same weights — was run over the
-**same crops** (§2.6) and **reproduces the CJK formula penalty**:
+**same crops** (cross-stack section) and **reproduces the CJK formula penalty**:
 
 | stack | display_formula Edit ↓ (english) | (simplified_chinese) | CJK penalty |
 |---|---|---|---|
@@ -847,7 +849,7 @@ fixing it would mean patching the official scorer to raise our own number, and i
 layout miss — the GT formula region was never detected). That is ours, but it is 0.66% of formulas and
 is not what the −2.44 is made of. Logged to FUTURE_WORK.
 
-### Cross-stack: the same crops through llama.cpp (§2.6)
+### Cross-stack: the same crops through llama.cpp
 
 **Question this answers.** Every number above says the port matches the *published* figures. It cannot,
 on its own, say the port matches *the model* — a shared-cause error (a subtly wrong crop, prompt, or
@@ -890,7 +892,7 @@ rather than merely reproducing a number. The residual table (−0.30 TEDS) and f
 deltas favour the Rust port, are small, and are consistent with ordinary numeric/preprocessing
 divergence between two bf16 stacks; they are **not** attributed further without evidence.
 
-**Robustness, side by side (§2.7).** Same crops, same guards:
+**Robustness, side by side.** Same crops, same guards:
 
 | | Rust port | llama.cpp |
 |---|---|---|
@@ -904,26 +906,26 @@ llama.cpp run does not pay, and one that slightly *understates* the port. It is 
 patched out.
 
 **One llama.cpp region-timeout did occur and was thrown away, not scored.** During the run the box went
-unresponsive (llama-server's 8 GB default prompt cache, `-cram`, on a 15.9 GB box — see PROGRESS
-2026-07-12); one table crop tripped the 120s guard and produced a 106-byte page. That page was
+unresponsive (llama-server's 8 GB default prompt cache, `-cram`, on a 15.9 GB box); one table crop
+tripped the 120s guard and produced a 106-byte page. That page was
 **quarantined and regenerated** on the healthy box: 5 crops, 1845 bytes, 2.3s. Scoring the corrupted
 version would have booked an infrastructure stall as a *llama.cpp accuracy miss that never happened* —
 the guard's job is to make that distinction visible, and the fix is to re-run the page, not to keep it.
 
-### Speed, honestly (§2.7–§2.8) — llama.cpp is 2.7x faster per page, and the port's edge is not throughput
+### Speed, honestly — llama.cpp is 2.7x faster per page, and the port's edge is not throughput
 
 **Secondary result, and it does not flatter the port.** Same box, same 118-page stratified sample
 (`speed120.stems`), same crops, bf16 both sides, K=1 serial recognition by design.
 
-**Current number: 2.7x** (load-once recognition, §2.8 below). The 3.2x in the tables that follow was
+**Current number: 2.7x** (load-once recognition, below). The 3.2x in the tables that follow was
 measured with the old harness, which reloaded the checkpoint once per page; that reload has since been
-deleted, which is worth **1.6s/page** and nothing else. The §2.7 material is kept because the two
+deleted, which is worth **1.6s/page** and nothing else. The earlier material is kept because the two
 mistakes it caught — a memory-leak "speedup" and an uncharged layout stage — are the reason any of
 these numbers can be trusted.
 
 **The first number here was wrong, and the reason it was wrong matters.** The Rust full-run timings
 (median 17s/page) were taken on the box that was *later* found to be thrashing — rust-analyzer holding
-6.4GB and swap at 100% (see PROGRESS 2026-07-12). llama.cpp's were taken after that cleanup. Publishing
+6.4GB and swap at 100%. llama.cpp's were taken after that cleanup. Publishing
 17s vs 2.2s would have been a **7.7x speedup manufactured out of a memory leak**. So the Rust pipeline
 was re-run on the cleaned box, with llama-server stopped, over the same pages:
 
@@ -945,7 +947,7 @@ Per-page medians over the 103 pages both stacks timed on the clean box. Rust's h
 | stage | cost | who pays it |
 |---|---|---|
 | ONNX layout (PP-DocLayoutV3) | **0.88s**/page | both — llama.cpp *reuses the Rust run's crops*, so it never re-runs the detector; **0.88s is added back to every llama.cpp page above**, or the comparison would be a lie |
-| process spawn + bf16 model load | **1.76s**/page | **Rust only** — the old `run_pipeline.sh` invoked the recognize binary once per *page*. A harness artifact, not a port property — **now deleted, see §2.8** |
+| process spawn + bf16 model load | **1.76s**/page | **Rust only** — the old `run_pipeline.sh` invoked the recognize binary once per *page*. A harness artifact, not a port property — **now deleted, see below** |
 | recognition | **0.52s/crop** (Rust) vs **0.12s/crop** (llama.cpp) | the real gap |
 
 **The gap is kernels, not harness.** Removing the per-page model reload entirely (the load-once mode)
@@ -954,7 +956,7 @@ s/crop** is where the time actually goes, and it is consistent with the "Honest 
 above: candle's dense GEMM/MLP on the vision encoder is the ceiling, and that is an upstream maturity
 gap, not a bug in this repo.
 
-### §2.8 — load-once recognition: the reload is gone, and it bought exactly what was predicted
+### Load-once recognition: the reload is gone, and it bought exactly what was predicted
 
 The claim above was a prediction (10.0s → ~8.2s, 3.2x → ~2.6x). It has now been implemented and
 measured, and the prediction is what shipped: **8.42s median, 2.7x**.
@@ -964,7 +966,7 @@ measured, and the prediction is what shipped: **8.42s median, 2.7x**.
 recognition process over every pending page → assembly (per page). Same crops, same prompts, same
 greedy sampler, same engine.
 
-| | old (per-page reload) | **load-once (§2.8)** |
+| | old (per-page reload) | **load-once** |
 |---|---|---|
 | checkpoint load | 1.76s **per page** | **2.02s once for the whole 118-page run** (0.02s/page amortized) |
 | ONNX layout | 0.88s/page | 0.87s/page |
@@ -1011,9 +1013,9 @@ so the resumable runner steps over it. Verified live: a crop forced to time out 
 page's `results.json` stays complete, and the run continues to the next page. One hung crop costs one
 page, not the run.
 
-**Methodology (clean box, same as §2.7).** 118-page stratified sample, verified before timing: 4.1GB
+**Methodology (clean box, same as the run above).** 118-page stratified sample, verified before timing: 4.1GB
 of 15GB used, **no swap**, no rust-analyzer, llama-server stopped, GPU idle. llama.cpp's timings are
-unchanged from §2.7 (server mode, bf16 GGUF, same box) and still carry the +0.88s layout add-back,
+unchanged from the run above (server mode, bf16 GGUF, same box) and still carry the +0.88s layout add-back,
 since it reuses the Rust run's crops and never runs the detector. Reproduce:
 `speed_loadonce.py` → `speed_stats.py --rust-csv logs/speed_loadonce.csv`.
 
@@ -1025,7 +1027,8 @@ to.
 **What this is not.** Not a SOTA-speed claim, and not a claim the port is fast. On this box, for this
 workload, **llama.cpp wins on throughput and we report that plainly**. The port's actual edge is what
 it was always claimed to be: a **Python-free single static binary** (no torch, no venv, no CUDA-python
-stack) that reproduces the model's accuracy — which §2.6 now shows it does, to 0.0003 edit distance.
+stack) that reproduces the model's accuracy — which the cross-stack run shows it does, to 0.0003 edit
+distance.
 
 ### What the 2.7x does and does not generalize to (read before quoting it)
 
@@ -1049,7 +1052,7 @@ limits, stated so nobody has to infer them:
    against a ggml comparison is that its wins often come with trade-offs — quantized/reduced-precision
    paths, and hardware-specific hand-tuned kernels that buy speed with portability. The first of those
    is **ruled out by construction in this comparison: both sides are bf16** (the GGUF's
-   `general.file_type` = 32 = `MOSTLY_BF16`, read from the header, for the LM *and* the mmproj — §2.6),
+   `general.file_type` = 32 = `MOSTLY_BF16`, read from the header, for the LM *and* the mmproj),
    and the two stacks agree to 0.0003 edit distance, so llama.cpp is not buying speed with accuracy on
    this run. The second trade-off is real and stands: some of ggml's advantage is hand-written
    per-architecture kernel work that candle has not (yet) done. That is a **maturity** gap, not a
@@ -1072,7 +1075,7 @@ microbenchmarks earlier in this doc). Stated as a gap rather than estimated.
 - **The published pipeline is not only the VLM.** The paper's number is end-to-end PaddleOCR-VL-1.5 with
   *its own* layout stage, prompts and post-processing; our port swaps in our ONNX PP-DocLayoutV3 port,
   our crop glue and our markdown assembler. A divergence therefore does **not** localize to the ported
-  VLM weights by itself — attribution is exactly the job of §2.5.
+  VLM weights by itself — attribution is exactly the job of the sections that follow.
 - Formula CDM **is** measured now (91.77 on the benchmark slice; see the CDM section) and is what the
   `Overall` uses. The older `display_formula` **edit-distance** figures kept in this doc are a *proxy*
   and are never comparable to the paper's CDM — they are retained only as an internal control and for

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Price the nested-sub-region duplication (§2.5) with a causal A/B -- zero GPU, zero re-recognition.
+"""Price the nested-sub-region duplication with a causal A/B -- zero GPU, zero re-recognition.
 
 PP-DocLayoutV3 emits container->child region hierarchies: an `inline_formula` box sits INSIDE the
 `text` box that contains it, a `reference_content` box inside its `reference` box. Our port flattens

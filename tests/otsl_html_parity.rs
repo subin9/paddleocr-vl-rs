@@ -1,6 +1,6 @@
 //! OTSL->HTML parity: the shipped table renderer vs PaddleX's own `convert_otsl_to_html`.
 //!
-//! The §2.3 table-gap diagnosis found the defect: the VLM emits OTSL with span markers
+//! The table-gap diagnosis found the defect: the VLM emits OTSL with span markers
 //! (`<lcel>`/`<ucel>`/`<xcel>` on 34% of the run's tables), but the assembler flattened every one of
 //! them to a plain cell and rendered a GitHub pipe-table -- a format that cannot express a merged
 //! cell. The benchmark scores tables with TEDS, which compares exactly that cell tree.

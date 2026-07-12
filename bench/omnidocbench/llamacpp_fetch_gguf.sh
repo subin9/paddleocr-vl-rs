@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cross-stack (§2.6): fetch the FIRST-PARTY GGUF (not a community requant, whose quality would be a
+# Cross-stack: fetch the FIRST-PARTY GGUF (not a community requant, whose quality would be a
 # confound rather than a finding).
 #
 # The repo ships exactly one LM gguf + one mmproj + a chat template -- there is NO quant ladder, so

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""§2.5(a)/(b): split the official text_block Edit_dist into an error budget and attribute every edit
-to LAYOUT (a) or RECOGNITION (b) by geometry. Zero GPU, zero re-scoring.
+"""Split the official text_block Edit_dist into an error budget and attribute every edit to
+LAYOUT (a) or RECOGNITION (b) by geometry. Zero GPU, zero re-scoring.
 
 The scorer reports Edit_dist = sum(Edit_num) / sum(upper_len) over its own matched samples
 (metrics/cal_metric.py:168, `all_total_avg`). That is a ratio of sums, so it decomposes EXACTLY: each

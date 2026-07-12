@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-stack (§2.6): re-recognize the Rust pipeline's OWN crops with llama.cpp, then assemble
+"""Cross-stack: re-recognize the Rust pipeline's OWN crops with llama.cpp, then assemble
 with the SAME assembler, so the only thing that differs between the two runs is the recognition
 backend.
 

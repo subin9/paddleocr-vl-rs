@@ -5,7 +5,7 @@
 # already-fetched files. ~1.5 GB, 1651 images + OmniDocBench.json (~42 MB).
 set -euo pipefail
 
-# Pinned dataset revision (HF opendatalab/OmniDocBench, v1.5 tip at recon time).
+# Pinned dataset revision (HF opendatalab/OmniDocBench, v1.5 tip when this was pinned).
 REV="aa1ee96d106dbe53d0ae59474d75c6e6d9b53fec"
 DEST="$(cd "$(dirname "$0")" && pwd)/data"
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""§2.5 probe (a): is LAYOUT_PARTIAL a PORT DEFECT or PP-DocLayoutV3's own difficulty profile?
+"""Layout probe: is LAYOUT_PARTIAL a PORT DEFECT or PP-DocLayoutV3's own difficulty profile?
 
 `error_budget.py` attributes (a) LAYOUT 0.0353 of the 0.0662 text_block edit_whole, the largest single
 cause being LAYOUT_PARTIAL (our boxes cover <70% of a GT text block's area -> the rest is never

@@ -23,7 +23,7 @@ git fetch --all --tags
 git checkout "$PIN"
 git rev-parse HEAD > "$BUILD/BUILT_SHA"
 
-# ponytail: only llama-server is needed -- llamacpp_recognize.py drives it over HTTP so the model
+# Only llama-server is needed -- llamacpp_recognize.py drives it over HTTP so the model
 # loads once for all 34k crops. Building the full target list would cost minutes for binaries we
 # never call.
 CUDACXX="$CUDA/bin/nvcc" cmake -B build \

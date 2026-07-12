@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""§2.8 speed, load-once: re-time the Rust pipeline on the SAME 118 pages as the §2.7 clean-box run,
+"""Speed, load-once: re-time the Rust pipeline on the SAME 118 pages as the clean-box run,
 with recognition loading the checkpoint ONCE for the whole run instead of once per page.
 
 Emits a per-page CSV (stem, crops, layout_s, recognize_s, assemble_s) that `speed_stats.py --rust-csv`
@@ -14,7 +14,7 @@ Stage timing:
   assemble  : wall-clock of each `paddleocr-layout assemble` (pure CPU, string work)
 
 Run on a verified-clean box (no rust-analyzer, no swap pressure, llama-server stopped) or the number
-is a box artifact, not a pipeline property -- that is the mistake §2.7 caught.
+is a box artifact, not a pipeline property -- that is the mistake speed_stats.py caught.
 """
 import csv, json, os, pathlib, re, statistics as st, subprocess, sys, time
 

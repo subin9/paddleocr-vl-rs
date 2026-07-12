@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""§2.7 speed: Rust port vs llama.cpp, same box, same pages, same crops. Reproduces the table in
+"""Speed: Rust port vs llama.cpp, same box, same pages, same crops. Reproduces the table in
 docs/BENCHMARKS.md "Speed, honestly".
 
 Two things make the naive comparison a lie, and both are corrected here:
 
 1. **The Rust full run was timed on a degraded box.** It executed while rust-analyzer held 6.4GB and
-   swap was 100% full (PROGRESS 2026-07-12); llama.cpp was timed after the cleanup. Its median page
+   swap was 100% full; llama.cpp was timed after the cleanup. Its median page
    read 17s, vs 10s on the clean box -- quoting that against llama.cpp's 2.2s would manufacture a
    7.7x speedup out of a memory leak. So we do NOT read Rust timings from the full run log: we read
    them from `logs/speed_rust.log`, a re-run of a 118-page stratified sample on the CLEAN box with

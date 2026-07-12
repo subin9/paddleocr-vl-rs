@@ -42,7 +42,7 @@ pub fn crop_region(img: &RgbImage, bbox: &[f32; 4]) -> RgbImage {
 /// Graphics-only layout classes: pure images/charts/seals with no counterpart in any OmniDocBench
 /// text/table/formula GT category. Recognizing them (`OCR:` / `Chart Recognition:`) yields junk --
 /// a photo OCR's to gibberish, a chart to a long `col | val` numeric dump -- and that junk pollutes
-/// the scored markdown, so we drop it from assembly. Measured, in-session A/B on the §2.2 smoke5
+/// the scored markdown, so we drop it from assembly. Measured with an A/B on the 5-page smoke
 /// slice (assemble the SAME results.json with vs without this skip, score both back-to-back with the
 /// official scorer): dropping `chart` on the academic page moves text_block edit 0.9953 -> 0.0000,
 /// table TEDS 0.6883 -> 0.9969, reading_order 0.1333 -> 0.0000 (the chart's pipe-rows were being
@@ -56,7 +56,7 @@ pub(crate) const VISUAL_ONLY_CLASSES: [&str; 5] =
 /// markup/LaTeX). Empty results and [`VISUAL_ONLY_CLASSES`] are skipped. Blocks are separated by a
 /// blank line.
 pub fn assemble_markdown(blocks: &[(String, String)]) -> String {
-    // Ablation knob for the §2.5 divergence analysis: `PADDLEOCR_VL_KEEP_VISUAL=1` keeps the
+    // Ablation knob for the divergence analysis: `PADDLEOCR_VL_KEEP_VISUAL=1` keeps the
     // visual-only blocks so the same results.json can be scored with and without the skip.
     let keep_visual = std::env::var("PADDLEOCR_VL_KEEP_VISUAL").is_ok_and(|v| v == "1");
     let mut out = Vec::new();

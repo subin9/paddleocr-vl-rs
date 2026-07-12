@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the OFFICIAL PaddlePaddle PP-DocLayoutV3 on a list of pages and dump its boxes.
 
-§2.5 probe (a): the error budget attributes 0.0353 of our 0.0662 text_block edit_whole to the LAYOUT
+Layout probe: the error budget attributes 0.0353 of our 0.0662 text_block edit_whole to the LAYOUT
 stage, of which LAYOUT_PARTIAL (our box covers <70% of the GT block) is the single largest cause. Two
 explanations, and they demand opposite conclusions:
   - PORT DEFECT: the official model frames the whole GT block and our ONNX port's post-processing

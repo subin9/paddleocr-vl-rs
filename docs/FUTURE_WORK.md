@@ -6,7 +6,7 @@ Honest roadmap. Each item lists why it is valuable and what the hard part actual
 
 **Status: diagnosed, and closed as (iv) genuine model difficulty.** Kept here because the *number* is
 still open (91.77 vs 94.21, the whole of the −0.75 `Overall` deficit), not because the *cause* is.
-Full evidence in BENCHMARKS.md §2.4.
+Full evidence in BENCHMARKS.md, under "Formula: scored with CDM".
 
 **What it is.** Within `subset: v1.5` — the only slice the −2.44 is measured on — `language` partitions
 the 205 formula-bearing pages cleanly: english (148 pg) CDM **0.9349**, simplified_chinese (57 pg) CDM
@@ -37,7 +37,7 @@ predictions. It is upstream (it hits the reference model identically — our del
 cannot affect it), and it is **worth +0.03 CDM**: re-running CDM on all 217 affected predictions with
 the nesting removed and the content held fixed moves the mean 0.6587 → 0.6608, **+0.0022**, with 29
 improved and 20 *worse*. xelatex recovers from it. Those 224 score low (0.6479) because they are
-**over-segmented**, not because of the nesting. Documented in BENCHMARKS.md §2.4, deliberately not
+**over-segmented**, not because of the nesting. Documented in BENCHMARKS.md, deliberately not
 actioned.
 
 ## Cross-stack residual: llama.cpp is −0.30 TEDS / +0.0094 formula-edit vs the Rust port
@@ -62,10 +62,10 @@ is a model property (and the guard is the right answer forever); if no, it is a 
 or EOS handling and the guard is masking it. That single experiment is the whole task — do it before
 touching any generation code.
 
-## DONE — Skip visual-only regions in assembly (`VISUAL_ONLY_CLASSES`, measured §2.3-step-1)
+## DONE — Skip visual-only regions in assembly (`VISUAL_ONLY_CLASSES`, measured)
 
-Implemented: `assemble_markdown` drops `chart`/`image`/`header_image`/`footer_image`/`seal`. In-session
-A/B on the §2.2 slice moved academic text_block 0.9953→0.0000, table TEDS 0.6883→0.9969, reading_order
+Implemented: `assemble_markdown` drops `chart`/`image`/`header_image`/`footer_image`/`seal`. An A/B on
+the 5-page plumbing slice moved academic text_block 0.9953→0.0000, table TEDS 0.6883→0.9969, reading_order
 0.1333→0.0000 (overall smoke5 text_block 0.276→0.077). Kept below: the *recognition* and *formula*
 follow-ups it exposed.
 
@@ -76,7 +76,7 @@ still runs the VLM on every `chart`/`image`/`seal` crop first — wasted GPU tim
 emit hundreds of tokens). The layout stage already knows the class in `manifest.json`, so recognition
 could skip the same `VISUAL_ONLY_CLASSES`. **Hard part:** it lives in the mistral.rs example
 (`paddleocr_vl_recognize`), not this crate; keep the `results.json` contract intact (emit the region
-with empty text, or omit it) so `assemble` behavior is unchanged. Still open: load-once (§2.8) shipped
+with empty text, or omit it) so `assemble` behavior is unchanged. Still open: load-once shipped
 without it, so every chart/image/seal crop is still recognized and then thrown away at assembly.
 
 ## book text_block 0.339 — standalone `inline_formula` wrapped as display `\[…\]`
@@ -91,20 +91,20 @@ both kinds — measure, don't blind-apply.
 
 The guess recorded here — "likely OTSL→pipe cell-text normalization differences" — was right, and the
 full run made it unmissable: table Edit_dist was **0.5628** across 1651 pages while TEDS sat at 0.836.
-Root cause (BENCHMARKS §2.3): `otsl_to_markdown` flattened every span marker to `<fcel>` and emitted a
+Root cause (BENCHMARKS.md, "The table gap"): `otsl_to_markdown` flattened every span marker to `<fcel>` and emitted a
 GitHub pipe-table, a format that cannot express a merged cell — and **34% of our tables carry a span**.
 Replacing it with the reference's own OTSL→HTML converter (parity-pinned to PaddleX on all 739 tables)
 took table Edit_dist **0.5628 → 0.0801** and TEDS **0.8362 → 0.9036**. No separate diagnostic was ever
 needed; the format defect explained both metrics at once.
 
-## DONE — Load-once page-iterating recognize mode (§2.8, measured)
+## DONE — Load-once page-iterating recognize mode (measured)
 
 Implemented: `paddleocr_vl_recognize <dir>... | --list <file>` builds the engine once and iterates
 page dirs; `run_pipeline.sh` runs layout per page → **one** recognition process over all pending pages
 → assembly per page. Iterate, not serve — the binary already loaded once and looped crops, so this was
 ~30 lines; a server would have needed HTTP + image upload + prompt marshalling for the same win.
 
-Measured on the clean box, same 118 pages as §2.7: median page **10.0s → 8.42s**, checkpoint load
+Measured on the clean box, same 118 pages as the speed run: median page **10.0s → 8.42s**, checkpoint load
 **1.76s/page → 2.02s once per run**, llama.cpp gap **3.2x → 2.7x**. Recognition per crop is unchanged
 (0.52 → 0.50s/crop), which is the point: this deleted a harness artifact and nothing else.
 
@@ -141,7 +141,7 @@ whether some (headers/footers, page numbers) should be dropped rather than rende
 ## LM-prefill / vision-GEMM residual kernel work — THE remaining speed lever
 
 **Why:** after moving vision + LM attention to fused Sdpa/flash, the residual gap sits in the dense
-GEMM/MLP (linear projections) of the vision encoder. With the per-page reload deleted (§2.8), this is
+GEMM/MLP (linear projections) of the vision encoder. With the per-page reload deleted, this is
 **all that is left** of the llama.cpp gap: **0.50s/crop vs 0.12s/crop**, i.e. the whole measured
 **2.7x**. No harness change can touch it.
 

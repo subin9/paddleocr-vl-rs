@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""§2.5 divergence analysis: how much recognized text does the assembler's visual-only skip drop,
+"""Divergence analysis: how much recognized text does the assembler's visual-only skip drop,
 and do the pages it drops from score worse?
 
 Reads the recognition stage's own results.json (work/<stem>/results.json) -- no GPU, no re-run --

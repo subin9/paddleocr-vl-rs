@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Cross-stack (§2.6): serve PaddleOCR-VL-1.5 from llama.cpp so the SAME crops our Rust pipeline
+# Cross-stack: serve PaddleOCR-VL-1.5 from llama.cpp so the SAME crops our Rust pipeline
 # recognizes can be re-recognized by a second, independent stack.
 #
 # Precision: the first-party GGUF is **BF16** (gguf header general.file_type=32; tensors BF16+F32) --
 # the repo ships no quant ladder. So this is a like-for-like precision comparison with our bf16 port,
 # NOT a quantized run. Anything else would need saying so out loud.
 #
-# ponytail: llama-server (load once, N requests) instead of llama-mtmd-cli per crop -- 34,097 crops
+# llama-server (load once, N requests) instead of llama-mtmd-cli per crop -- 34,097 crops
 # would otherwise mean 34,097 model loads.
 set -euo pipefail
 WS="${WS:-$(cd "$(dirname "$0")/../../.." && pwd)}"   # see llamacpp_build.sh
