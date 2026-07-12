@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Cross-stack (§2.6): build llama.cpp from source with CUDA.
+# Cross-stack check: build llama.cpp from source with CUDA.
 #
 # Why source: the box's Homebrew llama-mtmd-cli is b5720 (8308f98c, mid-2025), which PREDATES
 # PR #18825 (PaddleOCR-VL support, merged 2026-02-19) -- `strings` finds no `paddleocr` projector
-# in it at all. Pinned to 4f37f519, the SHA the support audit in CHECKLIST_ODB §2.6 was done against.
+# in it at all. Pinned to 4f37f519, the SHA whose PaddleOCR-VL support this comparison was run against.
 #
 # The PATH nvcc is 11.5 and CANNOT target sm_89 (Ada, RTX 4070 Ti SUPER), so we pin CUDACXX to the
 # 12.9 toolchain explicitly. Getting this wrong yields a CPU-only or unsupported-arch build.

@@ -50,10 +50,10 @@ bench/omnidocbench/results/*.run.log
 bench/omnidocbench/paddle-venv/
 __pycache__/
 
-# Ralph-loop agent scaffolding (prompts, checklists, loop runners). Kept on disk — the loop reads
-# them — but not shipped: they are how the work was done, not part of the library. Untracked from the
-# tip only; earlier commits still contain them (scrubbing history needs a fresh bundle + a
-# force-push, which is a human call).
-PROMPT_*.md
-CHECKLIST_*.md
-run_*.sh
+# Working notes, task checklists and scratch runner scripts. Useful locally, but they are notes about
+# how the work was done, not part of the library.
+/PROMPT_*.md
+/CHECKLIST_*.md
+PROGRESS.md
+/run_*.sh
+/.local_prep_state.md

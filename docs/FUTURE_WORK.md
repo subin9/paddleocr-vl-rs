@@ -62,20 +62,6 @@ is a model property (and the guard is the right answer forever); if no, it is a 
 or EOS handling and the guard is masking it. That single experiment is the whole task — do it before
 touching any generation code.
 
-## DONE — Purge the accidentally-committed venv from git history (before any push)
-
-`bench/omnidocbench/paddle-venv/` (19,585 files, 1.2GB of PaddlePaddle/modelscope wheels) was committed
-in `512f17b8`, before the `.gitignore` rule covering it landed. `e2ac8bf3` untracked it, but
-`git rm --cached` does not remove blobs from *history* — they stayed in the object store.
-
-Purged with `git filter-repo --path bench/omnidocbench/paddle-venv/ --invert-paths`, gated on the tree
-being byte-identical afterwards: the non-venv `git ls-files` sha1 matched exactly, 21,569 venv objects →
-**0**, `.git` **359M → 856K**, `cargo build`/`cargo test` green. 115 → 114 commits, because the
-"untrack the venv" commit became empty and was pruned. A full pre-purge bundle is retained off-repo
-(`/home/sb/paddleocr-vl-rs-prepurge.bundle`) — note filter-repo rewrites *branches* too, so a backup
-branch is not a backup; the bundle is. Every SHA changed, so the first push must be a force-push of a
-divergent history (the old remote only ever held 2 commits and never saw the venv).
-
 ## DONE — Skip visual-only regions in assembly (`VISUAL_ONLY_CLASSES`, measured §2.3-step-1)
 
 Implemented: `assemble_markdown` drops `chart`/`image`/`header_image`/`footer_image`/`seal`. In-session
