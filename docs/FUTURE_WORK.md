@@ -77,12 +77,15 @@ mismatches the block. **Hard part:** deciding wrapping by class is easy (`inline
 but confirming it doesn't regress the display-formula metric needs a before/after on a subset with
 both kinds — measure, don't blind-apply.
 
-## table Edit_dist 0.434 vs TEDS 0.997 gap
+## DONE — table Edit_dist 0.434 vs TEDS 0.997 gap (it was the pipe-table renderer)
 
-**Why:** the academic tables score near-perfect on TEDS (structure+content tree edit) but 0.43 on the
-raw table Edit_dist. TEDS is OmniDocBench's headline table metric, so this is low-priority, but the
-gap is worth understanding before the full run (likely OTSL→pipe cell-text normalization differences).
-**Hard part:** diagnostic only — compare normalized GT vs pred table strings on the 2 academic tables.
+The guess recorded here — "likely OTSL→pipe cell-text normalization differences" — was right, and the
+full run made it unmissable: table Edit_dist was **0.5628** across 1651 pages while TEDS sat at 0.836.
+Root cause (BENCHMARKS §2.3): `otsl_to_markdown` flattened every span marker to `<fcel>` and emitted a
+GitHub pipe-table, a format that cannot express a merged cell — and **34% of our tables carry a span**.
+Replacing it with the reference's own OTSL→HTML converter (parity-pinned to PaddleX on all 739 tables)
+took table Edit_dist **0.5628 → 0.0801** and TEDS **0.8362 → 0.9036**. No separate diagnostic was ever
+needed; the format defect explained both metrics at once.
 
 ## DONE — Load-once page-iterating recognize mode (§2.8, measured)
 

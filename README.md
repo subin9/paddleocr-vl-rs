@@ -69,8 +69,8 @@ is an inference (the leaderboard does not publish its page list) are in
   CPU-f32 and GPU-bf16**. 9/9 match golden token ids.
 - Layout stage: Rust preprocess+run+decode matches an onnxruntime reference within ~0.05 px on the
   sample page (resampler drift only). See `tests/parity_layout.rs`.
-- Load-once recognition is gated on byte-identical output vs the per-page path (24 pages / 189 crops /
-  all 22 layout classes, **24/24 identical**) — a speed mode that changes a token is a bug.
+- Load-once recognition is gated on byte-identical output vs the per-page path (24 pages / 189 crops
+  covering 22 of the 25 layout classes, **24/24 identical**) — a speed mode that changes a token is a bug.
 
 ## Quick start
 
@@ -147,10 +147,12 @@ residual) are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md). Honest summary:
 - **llama.cpp is faster per page, and we report that plainly: 2.7x.** Same box, same 118-page
   sample, same crops, **bf16 on both sides**, layout cost charged to both. Median page **8.42s**
   (this port, load-once) vs **3.1s** (llama.cpp + layout). Deleting the per-page checkpoint reload
-  took us 10.0s -> 8.42s and 3.2x -> 2.7x; the rest is **0.50s/crop vs 0.12s/crop** of recognition,
-  i.e. the candle vision-GEMM ceiling above. Magnitude is workload-specific (compute-bound vision
-  prefill, short OCR outputs) — the port's edge is a Python-free single binary that reproduces the
-  model's accuracy, not throughput.
+  took us 10.0s -> 8.42s and 3.2x -> 2.7x; the rest is **0.50s/crop vs 0.12s/crop** of recognition.
+  The candle vision-GEMM ceiling above is the **best-supported explanation** for that per-crop gap —
+  *inferred* from where the time goes, not measured at the kernel level; the micro-benchmark that
+  would settle it is specified in [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md). Magnitude is
+  workload-specific (compute-bound vision prefill, short OCR outputs) — the port's edge is a
+  Python-free single binary that reproduces the model's accuracy, not throughput.
 - Region **batching buys nothing** here (vision runs per-image regardless); recommended batch size
   is 1. Leakage-free, but no throughput win. Details and data in the benchmarks doc.
 
