@@ -41,6 +41,67 @@ pub fn crop_region(img: &RgbImage, bbox: &[f32; 4]) -> RgbImage {
     image::imageops::crop_imm(img, x, y, w, h).to_image()
 }
 
+/// The crop the recognition stage should see for a region of this class: the plain region, except a
+/// formula, which upstream tightens onto its ink first ([`crop_margin`]). The class test is
+/// upstream's, verbatim (`"formula" in block_label and block_label != "formula_number"`).
+pub fn crop_for_class(img: &RgbImage, bbox: &[f32; 4], class: &str) -> RgbImage {
+    let crop = crop_region(img, bbox);
+    if class.contains("formula") && class != "formula_number" {
+        crop_margin(&crop)
+    } else {
+        crop
+    }
+}
+
+/// Tighten a crop onto its ink, the way upstream does before recognizing a **formula** region
+/// (`PaddleX paddlex/inference/pipelines/paddleocr_vl/uilts.py::crop_margin`, called from
+/// `pipeline.py` for `"formula" in block_label and block_label != "formula_number"` -- and for no
+/// other class).
+///
+/// Grayscale, stretch the contrast to the full range, threshold at 200, take the bounding box of
+/// everything darker, crop to it. A detected formula box usually carries whitespace the detector
+/// included; trimming it means `smart_resize` spends the model's pixel budget on the glyphs instead
+/// of on the margin. Upstream keeps the result only if it is bigger than 2x2 -- so does this.
+///
+/// Not for text/table/chart/seal: upstream does not do it there, and a text region trimmed to its
+/// ink loses the layout cue the model reads.
+pub fn crop_margin(img: &RgbImage) -> RgbImage {
+    let gray: Vec<u8> = img
+        .pixels()
+        .map(|p| {
+            // OpenCV BGR2GRAY weights, which is what upstream's cv2 call applies.
+            let [r, g, b] = p.0;
+            (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32).round() as u8
+        })
+        .collect();
+    let (lo, hi) = match (gray.iter().min(), gray.iter().max()) {
+        (Some(&lo), Some(&hi)) if lo < hi => (lo as f32, hi as f32),
+        _ => return img.clone(), // flat image: nothing to threshold against
+    };
+
+    let (w, h) = (img.width(), img.height());
+    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0u32, 0u32);
+    for (i, &v) in gray.iter().enumerate() {
+        // Normalize to 0..255 first (upstream's LUT), THEN threshold: the stretch is what makes a
+        // faint scan's ink cross the same fixed 200 cut a crisp one does.
+        if ((v as f32 - lo) / (hi - lo) * 255.0).round() as u8 <= 200 {
+            let (x, y) = (i as u32 % w, i as u32 / w);
+            x0 = x0.min(x);
+            y0 = y0.min(y);
+            x1 = x1.max(x);
+            y1 = y1.max(y);
+        }
+    }
+    if x1 < x0 || y1 < y0 {
+        return img.clone(); // no ink found
+    }
+    let (cw, ch) = (x1 - x0 + 1, y1 - y0 + 1);
+    if cw <= 2 || ch <= 2 {
+        return img.clone(); // upstream: keep the crop only if it is bigger than 2x2
+    }
+    image::imageops::crop_imm(img, x0, y0, cw, ch).to_image()
+}
+
 /// Graphics-only layout classes: pure images/charts/seals with no counterpart in any OmniDocBench
 /// text/table/formula GT category. Recognizing them (`OCR:` / `Chart Recognition:`) yields junk --
 /// a photo OCR's to gibberish, a chart to a long `col | val` numeric dump -- and that junk pollutes
@@ -629,6 +690,47 @@ mod tests {
             assemble_markdown(&blocks),
             "# Title\n\na said \"hi\"\nnext line"
         );
+    }
+
+    /// A white canvas with one dark rectangle of ink at `(ix, iy)`, `iw x ih`.
+    fn inked(w: u32, h: u32, ix: u32, iy: u32, iw: u32, ih: u32) -> RgbImage {
+        RgbImage::from_fn(w, h, |x, y| {
+            let ink = x >= ix && x < ix + iw && y >= iy && y < iy + ih;
+            image::Rgb(if ink { [20, 20, 20] } else { [255, 255, 255] })
+        })
+    }
+
+    #[test]
+    fn crop_margin_tightens_onto_the_ink() {
+        // 100x100 of whitespace with a 20x10 formula sitting in it: the crop the VLM sees should be
+        // the formula, not the margin. This is the whole point -- smart_resize then spends the pixel
+        // budget on the glyphs.
+        let out = crop_margin(&inked(100, 100, 30, 40, 20, 10));
+        assert_eq!((out.width(), out.height()), (20, 10));
+    }
+
+    #[test]
+    fn crop_margin_leaves_a_degenerate_crop_alone() {
+        // Uniform image: no threshold to find, upstream returns it untouched.
+        let flat = RgbImage::from_pixel(40, 40, image::Rgb([255, 255, 255]));
+        assert_eq!(crop_margin(&flat).dimensions(), (40, 40));
+        // Ink smaller than 2x2 in either axis: upstream keeps the original rather than the sliver.
+        let sliver = inked(40, 40, 10, 10, 2, 8);
+        assert_eq!(crop_margin(&sliver).dimensions(), (40, 40));
+    }
+
+    #[test]
+    fn only_formulas_get_their_margins_cropped() {
+        // Upstream's condition, verbatim: "formula" in label, except formula_number. Everything else
+        // -- text especially -- keeps its whitespace, which carries a layout cue the model reads.
+        let img = inked(100, 100, 30, 40, 20, 10);
+        let full = [0.0, 0.0, 100.0, 100.0];
+        for class in ["display_formula", "inline_formula"] {
+            assert_eq!(crop_for_class(&img, &full, class).dimensions(), (20, 10), "{class}");
+        }
+        for class in ["text", "table", "chart", "seal", "formula_number"] {
+            assert_eq!(crop_for_class(&img, &full, class).dimensions(), (100, 100), "{class}");
+        }
     }
 
     #[test]

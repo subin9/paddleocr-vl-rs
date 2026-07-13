@@ -13,7 +13,7 @@
 
 use ort::session::Session;
 use paddleocr_vl_rs::assemble::{
-    assemble_markdown, crop_region, manifest_json, plan_tasks, read_results,
+    assemble_markdown, crop_for_class, manifest_json, plan_tasks, read_results,
 };
 use paddleocr_vl_rs::{run_layout, set_default_dylib};
 use std::path::Path;
@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(out)?;
     let tasks = plan_tasks(&regions);
     for (task, region) in tasks.iter().zip(&regions) {
-        crop_region(&img, &region.bbox).save(out.join(&task.crop))?;
+        crop_for_class(&img, &region.bbox, &task.class).save(out.join(&task.crop))?;
     }
     std::fs::write(out.join("manifest.json"), manifest_json(&tasks))?;
     println!("wrote {} crop(s) + manifest.json to {}/", tasks.len(), out_dir);

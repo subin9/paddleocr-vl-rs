@@ -184,6 +184,30 @@ CDM is not in this A/B (it needs the CDM environment); formula `Edit_dist` stand
 Re-running CDM on the guarded predictions is the open item — 18 `display_formula` blocks are degenerate
 and get cleaned, which is the right shape to move the −2.44.
 
+## `crop_margin`: the formula crop parity fix, A/B'd on both stacks
+
+Upstream trims a formula crop to its ink before recognizing it (`crop_margin`, formula blocks only);
+this port did not. Ported, then measured the same way — re-recognize the **1,685** formula crops with
+the tightened crop, splice them into the scored run's `results.json`, re-assemble, re-score. 911 of
+them come back with different text; 291 of 1649 pages change.
+
+| `subset: v1.5` | port +guard | port +guard+`crop_margin` | llama.cpp base | llama.cpp +`crop_margin` |
+|---|---|---|---|---|
+| text Edit ↓ | 0.0323 | 0.0322 | 0.0310 | 0.0309 |
+| **formula Edit ↓** | 0.1817 | **0.1697** | 0.1913 | **0.1805** |
+| table TEDS ↑ | 0.9282 | 0.9282 | 0.9252 | 0.9252 |
+| reading-order ↓ | 0.0414 | 0.0414 | 0.0412 | 0.0413 |
+
+**−0.0120 (−6.6%) formula edit on the port, −0.0108 (−5.6%) on llama.cpp.** Only the formula metric
+moves, because only the formula crops changed.
+
+The cross-stack column is doing real work here, and it is the reason the llama.cpp control was re-run
+rather than left standing. llama.cpp reads **this pipeline's crop PNGs** — it is independent on the
+decode path and *common-mode* on the crop path. So a crop-side fix must improve both stacks by a
+similar margin, and a port-side bug could not. Both improved, by 6.6% and 5.6%. That is the signature
+of a crop fix, and it is what the earlier "llama.cpp reproduces the gap, so it is not ours" argument
+could never have detected.
+
 ## Methodology (recorded before any run)
 
 **Benchmark.** OmniDocBench — [opendatalab/OmniDocBench](https://github.com/opendatalab/OmniDocBench)

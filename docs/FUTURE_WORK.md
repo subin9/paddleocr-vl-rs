@@ -49,36 +49,40 @@ improved and 20 *worse*. xelatex recovers from it. Those 224 score low (0.6479) 
 **over-segmented**, not because of the nesting. Documented in BENCHMARKS.md, deliberately not
 actioned.
 
-## Formula crops skip upstream's `crop_margin` — a real, unmeasured parity gap in the crop path
+## DONE — Formula crops skipped upstream's `crop_margin`. Ported, and it is worth −6.6% formula edit.
 
-**Why:** upstream does not hand the VLM the raw layout box for a formula. `PaddleX
-paddlex/inference/pipelines/paddleocr_vl/pipeline.py` runs **`crop_margin(block_img)` on formula blocks
-only** (`"formula" in block_label and block_label != "formula_number"`), immediately before
-recognition: contrast-normalize to full range with a LUT, threshold at 200 into an ink mask, take the
-bounding box of the ink, crop to it (kept only if the result is >2 px on both sides). It tightens the
-crop onto the glyphs, so `smart_resize` then spends the pixel budget on the formula instead of on the
-whitespace the detector included. **This port does not do it** — `assemble::crop_region` is a plain
-clamped crop for every class.
+The port handed the VLM the raw layout box for a formula. Upstream does not: `PaddleX
+pipeline.py` runs **`crop_margin(block_img)` on formula blocks only** (`"formula" in block_label and
+block_label != "formula_number"`) — contrast-normalize with a LUT, threshold at 200 into an ink mask,
+crop to the ink's bounding box, keep it only if >2px on both sides. It tightens the crop onto the
+glyphs so `smart_resize` spends the pixel budget on the formula and not on the whitespace the detector
+included. It was the only per-class crop preprocessing upstream had and we didn't.
 
-That is the only per-class crop preprocessing upstream has and we don't (the per-class `min_pixels` /
-`max_pixels` all default to the same 112896 / 1003520, so those are *not* a divergence; `spotting`'s
-larger `max_pixels` is already handled, and this pipeline emits no `spotting` regions). Table blocks
-also get `tokenize_figure_of_table` upstream, but table TEDS is already at parity (92.75 vs a published
-92.76), so that one is costing nothing measurable here.
+Ported as `assemble::crop_margin`, applied through `assemble::crop_for_class` on upstream's class test
+verbatim. Not applied to text/table/chart/seal — upstream does not, and a text region trimmed to its
+ink loses the layout cue the model reads.
 
-**Why it is interesting:** formula CDM is this port's *only* remaining accuracy gap, the CJK split
-explains 1.72 of the 2.44, and the leftover ~0.72 has no owner. `crop_margin` is language-blind — it
-cannot produce the CJK-vs-English split — but it depresses *both* languages if a formula crop carries
-whitespace the reference pipeline would have trimmed. It is exactly the right shape for that residual.
-And the llama.cpp cross-stack control cannot rule it out: llama.cpp eats **this pipeline's crop PNGs**,
-so a missing crop step is common-mode to both stacks (see the scope note above).
+**Measured** (`subset: v1.5`, same layout regions, official scorer; re-recognized the 1,685 formula
+crops and spliced them into the scored run — 911 of them changed text):
 
-**Hard part:** none of this is measured — it is a code-parity observation, not a result, and it goes in
-that order. Port `crop_margin` (~25 lines: `image` crate grayscale + a 200 threshold + ink bbox), then
-re-score formula CDM on `subset: v1.5` A/B with nothing else changed. If CDM does not move, say so and
-close the item; the whole point of this repo is that the number decides, not the plausibility of the
-story. Do **not** apply it to text/table/chart/seal — upstream does not, and a text region trimmed to
-its ink loses the layout cue the model reads.
+| | formula Edit ↓ | |
+|---|---|---|
+| Rust port, guard only | 0.1817 | |
+| Rust port, **+ `crop_margin`** | **0.1697** | **−0.0120 (−6.6%)** |
+| llama.cpp, baseline | 0.1913 | |
+| llama.cpp, **+ `crop_margin`** | **0.1805** | **−0.0108 (−5.6%)** |
+
+Nothing else moves (text 0.0323→0.0322, table TEDS 0.9282 unchanged, reading order unchanged) — only
+the formula crops changed, and only the formula metric responds.
+
+**And the cross-stack control finally earns its keep.** The scope note above says llama.cpp is blind
+to crop-path defects because it eats *this pipeline's crop PNGs*. That predicts a crop fix should
+improve **both** stacks by a similar amount, and it does: −6.6% and −5.6% on two independent
+decoders. A port-side bug could not do that; a crop-side fix is exactly what does.
+
+**Still open:** CDM itself is not in this A/B (it needs the CDM environment; formula `Edit_dist`
+stands in). Re-scoring CDM on the guarded + `crop_margin` predictions is the remaining step, and it
+needs no VLM run — the predictions are already on disk.
 
 ## Cross-stack residual: llama.cpp is −0.30 TEDS / +0.0094 formula-edit vs the Rust port
 

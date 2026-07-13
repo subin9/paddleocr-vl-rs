@@ -35,6 +35,15 @@ The layout + assembly half (this crate) builds standalone with no GPU or engine 
 recognition VLM is a separate mistral.rs build; the two stages talk only through `manifest.json` and
 `results.json`.
 
+> **`results.json` is the model's raw output, not the finished text.** The repetition guard
+> (below) runs in `assemble::read_results`, on ingest — so the contract file keeps a faithful record
+> of what the VLM actually emitted, which is what makes a degenerate region diagnosable at all. The
+> cost is that **a consumer who reads `results.json` directly bypasses the guard** and can get a
+> region that loops to the token cap. Take the text through `paddleocr-layout assemble` (or call
+> `assemble::read_results`); if you must parse `results.json` yourself, apply
+> `assemble::truncate_repetitive_content` + `assemble::truncate_repeating_lines` to each block, with
+> `min_count` 5000 for `table` and 50 for everything else — that is exactly what `read_results` does.
+
 ## Upstream contributions
 
 The recognition model and a general engine fix were contributed **upstream to mistral.rs**; this
@@ -96,6 +105,10 @@ is an inference (the leaderboard does not publish its page list) are in
   0.0327→**0.0323**, table TEDS 92.75→**92.82**, table Edit 0.0568→**0.0556**, formula Edit
   0.1833→**0.1817**, reading-order 0.0415→**0.0414**. It alters 204 of 78,710 recognized blocks, and
   every one of them was degenerate. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+- Formula crops are trimmed to their ink before recognition (`assemble::crop_margin`), which is what
+  upstream does for formula blocks and only formula blocks. Worth **−6.6% formula edit** on `v1.5`
+  (0.1817 → **0.1697**) — and −5.6% on llama.cpp over the same crops, which is the cross-stack
+  signature of a crop-path fix rather than a port bug.
 
 ## Quick start
 
