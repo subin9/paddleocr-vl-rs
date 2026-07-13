@@ -18,6 +18,15 @@ crops — **reproduces the CJK penalty** (its formula-edit CJK-vs-EN penalty is 
 and is slightly *worse* on formulas overall (0.2600 vs 0.2490). A CJK-specific defect in our port could
 not survive that. The model's formula head is simply weaker on Chinese content.
 
+**Scope of that control, stated precisely.** "Over the same crops" means llama.cpp reads *this
+pipeline's own crop PNGs* (`llamacpp_recognize.py`: "byte-identical by construction… we read the crop
+PNGs and manifests the scored REF_LAYOUT run already wrote"). So the control is independent on the
+**decode** path and blind on the **crop-construction** path — a divergence in how the crop is built is
+common-mode and cannot show up as a stack difference. It exonerates the decoder, not the cropper. That
+matters, because there is one: see the `crop_margin` item below, which is language-blind and therefore
+cannot explain the CJK split above, but is a live candidate for the ~0.72 of the −2.44 that the CJK
+story does not account for.
+
 **The previous entry here was wrong and is withdrawn.** It blamed *degraded inputs* (`fuzzy_content`
 0.307, `with_watermark` 0.564) and proposed probing the crop/preprocessing path. Those are `ALL`-row
 (1651-page) figures; the `*_hard` subsets are **disjoint** from v1.5 and contribute nothing to the
@@ -39,6 +48,37 @@ the nesting removed and the content held fixed moves the mean 0.6587 → 0.6608,
 improved and 20 *worse*. xelatex recovers from it. Those 224 score low (0.6479) because they are
 **over-segmented**, not because of the nesting. Documented in BENCHMARKS.md, deliberately not
 actioned.
+
+## Formula crops skip upstream's `crop_margin` — a real, unmeasured parity gap in the crop path
+
+**Why:** upstream does not hand the VLM the raw layout box for a formula. `PaddleX
+paddlex/inference/pipelines/paddleocr_vl/pipeline.py` runs **`crop_margin(block_img)` on formula blocks
+only** (`"formula" in block_label and block_label != "formula_number"`), immediately before
+recognition: contrast-normalize to full range with a LUT, threshold at 200 into an ink mask, take the
+bounding box of the ink, crop to it (kept only if the result is >2 px on both sides). It tightens the
+crop onto the glyphs, so `smart_resize` then spends the pixel budget on the formula instead of on the
+whitespace the detector included. **This port does not do it** — `assemble::crop_region` is a plain
+clamped crop for every class.
+
+That is the only per-class crop preprocessing upstream has and we don't (the per-class `min_pixels` /
+`max_pixels` all default to the same 112896 / 1003520, so those are *not* a divergence; `spotting`'s
+larger `max_pixels` is already handled, and this pipeline emits no `spotting` regions). Table blocks
+also get `tokenize_figure_of_table` upstream, but table TEDS is already at parity (92.75 vs a published
+92.76), so that one is costing nothing measurable here.
+
+**Why it is interesting:** formula CDM is this port's *only* remaining accuracy gap, the CJK split
+explains 1.72 of the 2.44, and the leftover ~0.72 has no owner. `crop_margin` is language-blind — it
+cannot produce the CJK-vs-English split — but it depresses *both* languages if a formula crop carries
+whitespace the reference pipeline would have trimmed. It is exactly the right shape for that residual.
+And the llama.cpp cross-stack control cannot rule it out: llama.cpp eats **this pipeline's crop PNGs**,
+so a missing crop step is common-mode to both stacks (see the scope note above).
+
+**Hard part:** none of this is measured — it is a code-parity observation, not a result, and it goes in
+that order. Port `crop_margin` (~25 lines: `image` crate grayscale + a 200 threshold + ink bbox), then
+re-score formula CDM on `subset: v1.5` A/B with nothing else changed. If CDM does not move, say so and
+close the item; the whole point of this repo is that the number decides, not the plausibility of the
+story. Do **not** apply it to text/table/chart/seal — upstream does not, and a text region trimmed to
+its ink loses the layout cue the model reads.
 
 ## Cross-stack residual: llama.cpp is −0.30 TEDS / +0.0094 formula-edit vs the Rust port
 
