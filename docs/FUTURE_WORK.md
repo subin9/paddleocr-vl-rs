@@ -120,13 +120,34 @@ it on 1.5% of pages ("non-Latin script languages result in instant repetitions")
 "the most common failure we experience", and the two vLLM PRs proposing a loop detector for
 PaddleOCR-VL were closed unmerged.
 
-**Still open (small):** the truncator cannot help the ~8 crops that trip the 120s region guard and
-record **empty text** — they never return a string to truncate. And the definitive per-crop A/B (does
-the *reference* transformers implementation loop on `page_062`'s crop?) was never run; the evidence
-above narrows it to the model but does not close it by direct observation. Worth one run before any
-in-flight detector (Nougat's logit-variance `StoppingCriteriaScores` is the design to copy if it ever
-becomes necessary — it stops the loop without distorting honest tokens, which a repetition penalty
-does).
+**Two holes in upstream's own heuristic, found by running it on real output and now fixed here.**
+Both are divergences from PaddleX, deliberate and measured:
+1. A runaway that dies on the token cap can be cut *mid-character*, and the detokenizer leaves a
+   trailing **U+FFFD**. Upstream's phrase check anchors on the exact suffix, so that one char makes
+   every candidate unit mismatch and the check silently no-ops — on precisely the outputs it exists
+   to catch. `truncate_repetitive_content` trims it before anchoring.
+2. Upstream runs its phrase check **only when the whole output is one line**. A region that emits two
+   honest lines and then loops on a third slips past every check it has (whole-string checks skipped
+   for containing a newline; the line-level check needs ten near-identical lines). `truncate_repeating_lines`
+   runs the phrase check per line. Safe on tables and measured, not assumed: OTSL marks a row with a
+   `<nl>` *token*, so a table is a single line and the pass reduces to the check already run on it —
+   0 of 1,590 real table blocks change beyond the upstream rule.
+
+Together they took the Korean line-level CER **0.1591 → 0.1268**, one prediction changed, none worse.
+
+**Scored A/B on OmniDocBench** (same `results.json`, re-assembled, official scorer — full table in
+BENCHMARKS.md): every `v1.5` metric improves — text Edit 0.0327→0.0323, table TEDS 92.75→92.82,
+formula Edit 0.1833→0.1817. 204 of 78,710 blocks altered, all degenerate.
+
+**Still open (small):** the guard cannot help the ~8 crops that trip the 120s region guard and record
+**empty text** — they never return a string to truncate. **Re-run CDM on the guarded predictions**:
+18 `display_formula` blocks are degenerate and now get cleaned, formula `Edit_dist` already improved,
+and CDM is the one metric still short of published — this is the cheapest shot at part of the −2.44
+and it needs no VLM run. And the definitive per-crop A/B (does the *reference* transformers
+implementation loop on `page_062`'s crop?) was never run; the evidence above narrows it to the model
+but does not close it by direct observation. Worth one run before any in-flight detector (Nougat's
+logit-variance `StoppingCriteriaScores` is the design to copy if it ever becomes necessary — it stops
+the loop without distorting honest tokens, which a repetition penalty does).
 
 ## DONE — Skip visual-only regions in assembly (`VISUAL_ONLY_CLASSES`, measured)
 

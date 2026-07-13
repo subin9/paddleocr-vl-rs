@@ -151,6 +151,39 @@ llama.cpp cross-check, which the port **loses** by 2.7x (see the speed sections)
 *did* find turned out to be defects in our own glue, not in the ported weights (layout
 post-processing, table HTML), which is exactly the outcome the pre-registration said to look for.
 
+## Repetition guard: measured A/B on the scored run
+
+`assemble::truncate_repetitive_content` + `truncate_repeating_lines` (upstream's own post-hoc string
+truncator, ported — see FUTURE_WORK) landed *after* the numbers above were measured, and it touches
+scored output, so it was A/B'd rather than assumed. Method: take the **same** `work_reflayout`
+`results.json` (no VLM re-run — the guard is pure post-processing), re-assemble with and without it,
+score both with the official scorer. The baseline column reproduces the headline numbers, which is
+what makes the delta trustworthy.
+
+| `subset: v1.5` | baseline | + guard | |
+|---|---|---|---|
+| text Edit ↓ | 0.0327 | **0.0323** | −0.0005 |
+| formula Edit ↓ | 0.1833 | **0.1817** | −0.0016 |
+| table TEDS ↑ | 0.9275 | **0.9282** | +0.0007 |
+| table Edit ↓ | 0.0568 | **0.0556** | −0.0012 |
+| reading-order Edit ↓ | 0.0415 | **0.0414** | −0.0001 |
+
+Every metric moves the right way. Scope: **204 of 78,710** recognized blocks are altered (143 of them
+`image`, which assembly drops anyway), across **23 of 1649** pages.
+
+**The one thing that looks like a regression, and is not.** Exactly 2 of 665 tables move: one gains
+**+0.70 TEDS** (0.11 → 0.81 — the model emitted a real table then looped on `<ecel>` forever; cutting
+the loop recovers `Beef meat / Chicken meat / Pork meat`), and one *loses* **−0.33** (0.38 → 0.05).
+The loser is degenerate end to end: **zero `<nl>` in 7,173 chars** — the model emitted 1,024 cells and
+never broke a row. TEDS was paying partial credit for a big garbage grid resembling a big real grid,
+and the shorter garbage resembles it less. No legitimate table content is destroyed; it is a scoring
+artifact of a page that was lost either way. It sits in the `*_hard` subset, which is why `ALL` table
+TEDS wobbles −0.0002 while `v1.5` gains.
+
+CDM is not in this A/B (it needs the CDM environment); formula `Edit_dist` stands in, and it improves.
+Re-running CDM on the guarded predictions is the open item — 18 `display_formula` blocks are degenerate
+and get cleaned, which is the right shape to move the −2.44.
+
 ## Methodology (recorded before any run)
 
 **Benchmark.** OmniDocBench — [opendatalab/OmniDocBench](https://github.com/opendatalab/OmniDocBench)

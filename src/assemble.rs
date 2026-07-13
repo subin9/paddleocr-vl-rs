@@ -349,7 +349,13 @@ fn shortest_repeating_unit(s: &[char]) -> Option<&[char]> {
 /// block whose lines are 80% the same line. Everything shorter than `min_count` is returned
 /// untouched -- see [`REPEAT_FLOOR_TABLE`] / [`REPEAT_FLOOR_TEXT`].
 pub fn truncate_repetitive_content(content: &str, min_count: usize) -> String {
-    let s: Vec<char> = content.trim().chars().collect();
+    // A runaway that dies on the token cap can be cut mid-character, and the detokenizer renders the
+    // dangling bytes as U+FFFD. Upstream's phrase check anchors on the EXACT suffix, so that one
+    // trailing char makes every candidate unit fail to match and the whole check silently no-ops --
+    // on precisely the outputs it exists to catch. Trim it before anchoring. (Measured: this plus
+    // [`truncate_repeating_lines`] took the Korean line-level CER 0.1591 -> 0.1268, one prediction
+    // changed, none made worse.)
+    let s: Vec<char> = content.trim().trim_end_matches('\u{FFFD}').trim().chars().collect();
     if content.chars().count() < min_count || s.is_empty() {
         return content.to_string();
     }
@@ -394,28 +400,62 @@ pub fn truncate_repetitive_content(content: &str, min_count: usize) -> String {
     content.to_string()
 }
 
+/// Cut a repeating tail off each line individually. Upstream only runs its phrase check when the
+/// whole output is ONE line (`"\n" not in stripped_content`), so a region that emits two honest
+/// lines and then loops forever on a third slips through every check it has: the whole-string checks
+/// are skipped for containing a newline, and the line-level check needs ten near-identical lines.
+/// That is a real Korean region (`'국가또는 / …명백한 사실 / 살고 싶은 살고 싶은 살고 싶은…'`,
+/// 1,207 chars on the third line) and it carried a fifth of the residual error.
+///
+/// Safe on tables, and measured rather than assumed: OTSL marks a row with a `<nl>` *token*, not a
+/// newline, so a table is a single line and this pass reduces to the phrase check
+/// [`truncate_repetitive_content`] already ran on it. Over the 1,590 table blocks of the
+/// OmniDocBench run it changes exactly zero of them beyond what the upstream rule already did.
+pub fn truncate_repeating_lines(content: &str, min_count: usize) -> String {
+    if content.chars().count() < min_count {
+        return content.to_string();
+    }
+    content
+        .split('\n')
+        .map(|line| {
+            let s: Vec<char> = line.trim_end_matches('\u{FFFD}').trim_end().chars().collect();
+            if s.len() > 100 {
+                if let Some((prefix, repeated)) = repeating_suffix(&s, 8, 5) {
+                    if 2 * repeated > s.len() {
+                        return prefix.iter().collect::<String>();
+                    }
+                }
+            }
+            line.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Parse the recognition stage's `results.json` (shape `[{read_order, class, text}]`) into
 /// `(class, text)` blocks sorted by `read_order` -- the input [`assemble_markdown`] expects.
 /// `text` carries arbitrary VLM output (escaped `\n`/`"`/`\`), so this uses a real JSON parser.
 /// Rows missing `class`/`text` are skipped; a missing `read_order` sorts first.
 ///
-/// This is where a runaway region is cut back to size ([`truncate_repetitive_content`]). It is done
-/// on ingest, not in the recognition stage: `results.json` stays a faithful record of what the
-/// model actually emitted -- which is how the runaway was diagnosed in the first place -- and every
-/// consumer of that contract passes through here.
+/// This is where a runaway region is cut back to size ([`truncate_repetitive_content`], plus
+/// [`truncate_repeating_lines`] for everything that is not a table). It is done on ingest, not in the
+/// recognition stage: `results.json` stays a faithful record of what the model actually emitted --
+/// which is how the runaway was diagnosed in the first place -- and every consumer of that contract
+/// passes through here.
 pub fn read_results(json: &str) -> serde_json::Result<Vec<(String, String)>> {
     let mut rows: Vec<(i64, String, String)> =
         serde_json::from_str::<Vec<serde_json::Value>>(json)?
             .into_iter()
             .filter_map(|v| {
                 let class = v.get("class")?.as_str()?.to_string();
-                let text = v.get("text")?.as_str()?;
+                let raw = v.get("text")?.as_str()?;
                 let floor = if class == "table" {
                     REPEAT_FLOOR_TABLE
                 } else {
                     REPEAT_FLOOR_TEXT
                 };
-                let text = truncate_repetitive_content(text, floor);
+                let text = truncate_repetitive_content(raw, floor);
+                let text = truncate_repeating_lines(&text, floor);
                 let read_order = v.get("read_order").and_then(|o| o.as_i64()).unwrap_or(0);
                 Some((read_order, class, text))
             })
@@ -631,6 +671,55 @@ mod tests {
         assert_eq!(
             truncate_repetitive_content(&table, REPEAT_FLOOR_TABLE),
             table
+        );
+    }
+
+    #[test]
+    fn truncate_survives_a_cap_cut_midcharacter() {
+        // The real shape of a runaway that dies on the token cap: the last token is half a UTF-8
+        // sequence and the detokenizer leaves U+FFFD. Upstream anchors its phrase check on the exact
+        // suffix, so that ONE char makes every candidate unit mismatch and the check no-ops -- on the
+        // exact outputs it exists for. Without the trim this assertion fails.
+        let runaway = format!("{}\u{FFFD}", "살고 싶은 ".repeat(200));
+        let cut = truncate_repetitive_content(&runaway, REPEAT_FLOOR_TEXT);
+        assert!(cut.chars().count() < 40, "U+FFFD tail defeated the guard: {cut:?}");
+    }
+
+    #[test]
+    fn repeating_lines_catch_what_the_newline_guard_lets_through() {
+        // A real Korean region: two honest lines, then a third that loops to the cap. Upstream skips
+        // its whole-string checks (the output contains a newline) and its line-level check needs ten
+        // near-identical lines -- so nothing fires and the loop survives intact.
+        let region = format!(
+            "국가또는\no 이 사건 업소에서 미성년자 혼숙이 있었던 것은 명백한 사실\n{}\u{FFFD}",
+            "살고 싶은 ".repeat(200)
+        );
+        assert_eq!(
+            truncate_repetitive_content(&region, REPEAT_FLOOR_TEXT),
+            region,
+            "upstream's own rule is expected to miss this -- that is the point"
+        );
+        let cut = truncate_repeating_lines(&region, REPEAT_FLOOR_TEXT);
+        assert!(cut.starts_with("국가또는\no 이 사건 업소에서"), "ate the honest lines: {cut:?}");
+        assert!(cut.chars().count() < 120, "still runaway: {cut:?}");
+    }
+
+    #[test]
+    fn a_real_table_survives_the_guard() {
+        // A long table whose rows differ in content: not periodic, no repeating tail, so nothing
+        // fires -- and the REPEAT_FLOOR_TABLE floor means it is not even inspected until it is huge.
+        // This is what keeps table TEDS intact, and the OmniDocBench A/B agrees: the guard moved 2 of
+        // 665 tables, and both were degenerate (one had zero `<nl>` in 7,173 chars -- the model
+        // emitted 1,024 cells and never broke a row).
+        let table: String = (0..400)
+            .map(|r| format!("<fcel>항목{r}<fcel>{}<fcel>{}<nl>", r * 7, r * 13))
+            .collect();
+        assert!(table.chars().count() > REPEAT_FLOOR_TABLE);
+        let json = format!(r#"[{{"read_order": 1, "class": "table", "text": "{table}"}}]"#);
+        assert_eq!(
+            read_results(&json).unwrap()[0].1,
+            table,
+            "the repetition guard ate a legitimate table"
         );
     }
 

@@ -91,7 +91,11 @@ is an inference (the leaderboard does not publish its page list) are in
   `assemble::truncate_repetitive_content`, a port of upstream's own `truncate_repetitive_content`
   with its per-class floors. PaddleOCR-VL decodes greedily with **no** repetition penalty — upstream's
   predictor ignores the parameter outright — so this string guard, not the sampler, is where the
-  original stack handles it too. See [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md).
+  original stack handles it too. **Measured, not assumed:** re-assembling and re-scoring the *same*
+  1649-page `results.json` with and without it moves every `v1.5` metric the right way — text Edit
+  0.0327→**0.0323**, table TEDS 92.75→**92.82**, table Edit 0.0568→**0.0556**, formula Edit
+  0.1833→**0.1817**, reading-order 0.0415→**0.0414**. It alters 204 of 78,710 recognized blocks, and
+  every one of them was degenerate. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Quick start
 
