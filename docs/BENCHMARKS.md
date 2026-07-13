@@ -191,22 +191,67 @@ this port did not. Ported, then measured the same way — re-recognize the **1,6
 the tightened crop, splice them into the scored run's `results.json`, re-assemble, re-score. 911 of
 them come back with different text; 291 of 1649 pages change.
 
-| `subset: v1.5` | port +guard | port +guard+`crop_margin` | llama.cpp base | llama.cpp +`crop_margin` |
-|---|---|---|---|---|
-| text Edit ↓ | 0.0323 | 0.0322 | 0.0310 | 0.0309 |
-| **formula Edit ↓** | 0.1817 | **0.1697** | 0.1913 | **0.1805** |
-| table TEDS ↑ | 0.9282 | 0.9282 | 0.9252 | 0.9252 |
-| reading-order ↓ | 0.0414 | 0.0414 | 0.0412 | 0.0413 |
+| `subset: v1.5` | port base | port +guard | port +guard+`crop_margin` | llama.cpp base | llama.cpp +`crop_margin` |
+|---|---|---|---|---|---|
+| text Edit ↓ | 0.0327 | 0.0323 | **0.0322** | 0.0310 | 0.0309 |
+| formula Edit ↓ | 0.1833 | 0.1817 | **0.1697** | 0.1913 | 0.1805 |
+| **formula CDM ↑** | **0.9177** | 0.9186 | **0.9325** | 0.9032 | 0.9220 |
+| table TEDS ↑ | 0.9275 | 0.9282 | **0.9282** | 0.9252 | 0.9252 |
+| reading-order ↓ | 0.0415 | 0.0414 | **0.0414** | 0.0412 | 0.0413 |
+| **Overall** ↑ | 93.75 | 93.84 | **94.28** | 92.94 | 93.87 |
 
-**−0.0120 (−6.6%) formula edit on the port, −0.0108 (−5.6%) on llama.cpp.** Only the formula metric
-moves, because only the formula crops changed.
+**`crop_margin` is worth +1.48 CDM on the port (91.77 → 93.25) and +1.88 on llama.cpp (90.32 → 92.20).**
+Formula edit falls 6.6% and 5.6% respectively. Nothing else moves, because nothing else changed.
 
-The cross-stack column is doing real work here, and it is the reason the llama.cpp control was re-run
-rather than left standing. llama.cpp reads **this pipeline's crop PNGs** — it is independent on the
-decode path and *common-mode* on the crop path. So a crop-side fix must improve both stacks by a
-similar margin, and a port-side bug could not. Both improved, by 6.6% and 5.6%. That is the signature
-of a crop fix, and it is what the earlier "llama.cpp reproduces the gap, so it is not ours" argument
-could never have detected.
+**The baseline column reproduces this repo's own previously published figures to 4 dp** — CDM 0.9177,
+english 0.9349, simplified_chinese 0.8730 — which is what makes the deltas a result rather than an
+artifact of a fresh scoring setup.
+
+### This overturns the formula attribution, and the reason is structural
+
+The old reading was: *"−2.44 CDM is the model's CJK difficulty, not a port defect — llama.cpp
+reproduces it."* Both halves fail.
+
+| page-avg CDM, `v1.5` | overall | english (148 pg) | simplified_chinese (57 pg) |
+|---|---|---|---|
+| port, base | 0.9177 | 0.9349 | 0.8730 |
+| port, **+`crop_margin`** | **0.9325** | **0.9460** | **0.8976** |
+| | **+1.48** | +1.11 | **+2.46** |
+
+A **port defect** — a crop step upstream performs and this port skipped — accounts for **1.48 of the
+2.44 (61%)**. And `crop_margin` is language-blind by construction, yet CJK formulas gain **more than
+twice** what English ones do, narrowing the CJK-vs-English gap from 6.2 points to 4.8. The "the model
+is simply weaker on Chinese formulas" story was carrying a crop bug on its back.
+
+The llama.cpp control could not have caught this, and that is not hindsight — it follows from what the
+control *is*. llama.cpp re-recognizes **this pipeline's crop PNGs** (`llamacpp_recognize.py`:
+"byte-identical by construction"). It is independent on the **decode** path and **common-mode** on the
+**crop** path. "Two stacks reproduce it" exonerates the decoder and says nothing about the cropper. The
+prediction that follows — a crop-side fix must lift *both* stacks — is exactly what happened: +1.48 and
++1.88 CDM.
+
+**What is left: 0.96 CDM to published (Overall −0.22).** The CJK-vs-English split is still 4.8 points
+and is still unattributed; it is now the whole of the residual, and it is no longer safe to assume it
+is the model's.
+
+### The CDM environment silently scores 0.0 — always run `cdm_smoke.py` first
+
+`CDM.evaluate` wraps its entire render-and-match path in a bare `except: return {"F1_score": 0}`. A
+broken environment therefore produces a **fabricated 0.0 per formula**, indistinguishable from "the
+model got every formula wrong". Two real failures hit this run, and neither raised anything:
+
+1. `scikit-image` was not installed → the RANSAC box matcher threw `ModuleNotFoundError`, swallowed.
+2. With it installed, `ransac(random_state=…)` throws `TypeError` on scikit-image ≥ 0.23, which renamed
+   the seed argument to `rng`. Also swallowed. `clone_eval_code.sh` now patches this on clone (it is a
+   keyword rename; the algorithm and the seed value are unchanged) and fails loudly if the patch does
+   not apply.
+
+`cdm_smoke.py` is the guard: identical gt/pred must score F1 = 1.0, a truncated pred must score
+0 < F1 < 1. It caught both. **No CDM number in this document was accepted before it passed.**
+
+Note also that the scorer's `CDM_plain` metric does **not** compute CDM — it only dumps the (gt, pred)
+formula pairs to `result/<name>_display_formula_formula.json` for an external CDM pass. A config with
+`CDM_plain` enabled produces no CDM column, which is easy to misread as "CDM ran and found nothing".
 
 ## Methodology (recorded before any run)
 

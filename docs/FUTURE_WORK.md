@@ -2,44 +2,50 @@
 
 Honest roadmap. Each item lists why it is valuable and what the hard part actually is.
 
-## Formula CDM −2.44 vs published — ROOT-CAUSED as a CJK-formula gap; **not a port defect**
+## Formula CDM — **the "not a port defect" verdict was WRONG. 1.48 of the 2.44 was ours.**
 
-**Status: diagnosed, and closed as (iv) genuine model difficulty.** Kept here because the *number* is
-still open (91.77 vs 94.21, the whole of the −0.75 `Overall` deficit), not because the *cause* is.
-Full evidence in BENCHMARKS.md, under "Formula: scored with CDM".
+**This entry previously read "ROOT-CAUSED as a CJK-formula gap; not a port defect" and closed the cause
+as genuine model difficulty. That is withdrawn.** Porting `crop_margin` (the item below) — a crop step
+upstream performs on formula blocks and this port skipped — moved CDM **91.77 → 93.25**, closing
+**1.48 of the 2.44 (61%)**. The gap to published is now **0.96** (`Overall` −0.22).
 
-**What it is.** Within `subset: v1.5` — the only slice the −2.44 is measured on — `language` partitions
-the 205 formula-bearing pages cleanly: english (148 pg) CDM **0.9349**, simplified_chinese (57 pg) CDM
-**0.8730**, weighted → 0.9177, which reproduces the scorer to 4 dp. **CJK formulas are 6.2 CDM points
-below English and are 28% of formula pages, so they are 1.72 of the 2.44 (70%).**
+| page-avg CDM, `subset: v1.5` | overall | english (148 pg) | simplified_chinese (57 pg) |
+|---|---|---|---|
+| port, base | 0.9177 | 0.9349 | 0.8730 |
+| port, **+`crop_margin`** | **0.9325** | **0.9460** | **0.8976** |
+| | **+1.48** | +1.11 | **+2.46** |
+| llama.cpp, base | 0.9032 | 0.9155 | 0.8719 |
+| llama.cpp, **+`crop_margin`** | **0.9220** | 0.9279 | 0.9068 |
 
-**Why it is not ours.** llama.cpp — an independent implementation of the same weights, over the same
-crops — **reproduces the CJK penalty** (its formula-edit CJK-vs-EN penalty is +0.0311; ours is +0.0387)
-and is slightly *worse* on formulas overall (0.2600 vs 0.2490). A CJK-specific defect in our port could
-not survive that. The model's formula head is simply weaker on Chinese content.
+**Why the old verdict failed, and it is not hindsight.** The argument was: *llama.cpp reproduces the
+CJK penalty over the same crops, so a defect in our port could not survive that.* But "the same crops"
+means llama.cpp re-recognizes **this pipeline's own crop PNGs** — it is an independent control on the
+**decode** path and a **common-mode** one on the **crop** path. It exonerates the decoder and says
+nothing whatsoever about the cropper. A missing crop step is exactly the class of bug it is built not
+to see. The falsifiable prediction that follows — a crop-side fix must lift *both* stacks — is what
+happened: +1.48 CDM on the port, +1.88 on llama.cpp.
 
-**Scope of that control, stated precisely.** "Over the same crops" means llama.cpp reads *this
-pipeline's own crop PNGs* (`llamacpp_recognize.py`: "byte-identical by construction… we read the crop
-PNGs and manifests the scored REF_LAYOUT run already wrote"). So the control is independent on the
-**decode** path and blind on the **crop-construction** path — a divergence in how the crop is built is
-common-mode and cannot show up as a stack difference. It exonerates the decoder, not the cropper. That
-matters, because there is one: see the `crop_margin` item below, which is language-blind and therefore
-cannot explain the CJK split above, but is a live candidate for the ~0.72 of the −2.44 that the CJK
-story does not account for.
+**And the CJK story was carrying the bug on its back.** `crop_margin` is language-blind by construction
+(contrast-normalize, threshold, ink bbox), yet CJK formulas gained **+2.46 against English's +1.11** —
+more than twice. The CJK-vs-English split narrows from 6.2 CDM points to 4.8. The old entry used that
+split to *rule out* a crop-path cause; the split was partly produced by one.
 
-**The previous entry here was wrong and is withdrawn.** It blamed *degraded inputs* (`fuzzy_content`
-0.307, `with_watermark` 0.564) and proposed probing the crop/preprocessing path. Those are `ALL`-row
-(1651-page) figures; the `*_hard` subsets are **disjoint** from v1.5 and contribute nothing to the
-−2.44, and within v1.5 `watermark` actually scores 0.9057 — *above* the mean. The degraded-input story
-was an artifact of reading all-1651 attribute rows against a v1.5-only deficit.
+**What is actually left.** The residual is now **0.96 CDM**, and the CJK-vs-English gap (4.8 points) is
+the whole of it. It is still unattributed, and after this it is **no longer safe to assume it is the
+model's**:
+- **The published 94.21 has no language split**, so we still cannot check whether the reference pipeline
+  also drops on CJK formulas. Settling it needs the reference transformers implementation scored
+  per-language on the same crops — the experiment this entry has been deferring since it was written.
+- **12 formulas (0.66%) our pipeline emitted nothing for** — a layout miss; the GT formula region was
+  never detected. Ours. Too small to move the metric, but it is ours.
+- `tokenize_figure_of_table` is still unported (upstream runs it on table blocks). Table TEDS is at
+  parity, so it is costing nothing measurable — but that is the same shape of reasoning that just
+  failed here, so it deserves an A/B rather than an assumption.
 
-**What is actually left (small, and honestly bounded).** Two real residuals, neither of which is the
-−2.44:
-- **12 formulas (0.66%) our pipeline emitted nothing for** — a layout miss, the GT formula region was
-  never detected. Ours. Worth a look; too small to move the metric.
-- **The published 94.21 has no language split**, so we cannot verify whether the reference pipeline
-  *also* drops on CJK formulas. We can only show the drop is not introduced by this port. Settling that
-  would need the reference transformers implementation scored per-language on the same crops.
+**The entry before *that* one was also wrong and was also withdrawn** (it blamed degraded inputs —
+`fuzzy_content`, `with_watermark` — by reading all-1651 attribute rows against a v1.5-only deficit).
+Three readings of this number, two of them wrong, and both times the error was the same: explaining the
+gap instead of measuring the difference.
 
 **Do not chase:** the scorer's own `\begin{array}` merge emits invalid nested `\[…\]` on 224/1807
 predictions. It is upstream (it hits the reference model identically — our delimiter choice provably
@@ -65,24 +71,32 @@ ink loses the layout cue the model reads.
 **Measured** (`subset: v1.5`, same layout regions, official scorer; re-recognized the 1,685 formula
 crops and spliced them into the scored run — 911 of them changed text):
 
-| | formula Edit ↓ | |
+| | formula CDM ↑ | formula Edit ↓ |
 |---|---|---|
-| Rust port, guard only | 0.1817 | |
-| Rust port, **+ `crop_margin`** | **0.1697** | **−0.0120 (−6.6%)** |
-| llama.cpp, baseline | 0.1913 | |
-| llama.cpp, **+ `crop_margin`** | **0.1805** | **−0.0108 (−5.6%)** |
+| Rust port, guard only | 0.9186 | 0.1817 |
+| Rust port, **+ `crop_margin`** | **0.9325** | **0.1697** |
+| | **+1.39** | −0.0120 (−6.6%) |
+| llama.cpp, baseline | 0.9032 | 0.1913 |
+| llama.cpp, **+ `crop_margin`** | **0.9220** | **0.1805** |
+| | **+1.88** | −0.0108 (−5.6%) |
 
-Nothing else moves (text 0.0323→0.0322, table TEDS 0.9282 unchanged, reading order unchanged) — only
-the formula crops changed, and only the formula metric responds.
+Against the port's *original* baseline (no guard): CDM **91.77 → 93.25, +1.48** — which is **61% of
+the −2.44 gap to published**, and it is why the formula item above is now withdrawn.
 
-**And the cross-stack control finally earns its keep.** The scope note above says llama.cpp is blind
-to crop-path defects because it eats *this pipeline's crop PNGs*. That predicts a crop fix should
-improve **both** stacks by a similar amount, and it does: −6.6% and −5.6% on two independent
-decoders. A port-side bug could not do that; a crop-side fix is exactly what does.
+Nothing else moves (text 0.0323→0.0322, table TEDS unchanged, reading order unchanged) — only the
+formula crops changed, and only the formula metric responds.
 
-**Still open:** CDM itself is not in this A/B (it needs the CDM environment; formula `Edit_dist`
-stands in). Re-scoring CDM on the guarded + `crop_margin` predictions is the remaining step, and it
-needs no VLM run — the predictions are already on disk.
+**And the cross-stack control finally earns its keep.** The scope note says llama.cpp is blind to
+crop-path defects because it eats *this pipeline's crop PNGs*. That predicts a crop fix must improve
+**both** stacks, and it does: +1.48 and +1.88 CDM on two independent decoders. A port-side decode bug
+could not do that; a crop-side fix is exactly what does.
+
+**Run `cdm_smoke.py` before trusting any CDM number.** `CDM.evaluate` swallows every exception into
+`{"F1_score": 0}`, so a broken environment fabricates a 0.0 per formula that reads as "the model got
+every formula wrong". Two silent failures hit this run — missing `scikit-image`, then
+`ransac(random_state=…)` removed in scikit-image ≥ 0.23. `clone_eval_code.sh` now patches the second on
+clone. Also note that the scorer's `CDM_plain` metric does not compute CDM; it only dumps the formula
+pairs for an external pass.
 
 ## Cross-stack residual: llama.cpp is −0.30 TEDS / +0.0094 formula-edit vs the Rust port
 

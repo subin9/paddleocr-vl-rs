@@ -67,21 +67,32 @@ control), and **this** Rust port.
 
 | metric | published PaddleOCR-VL-1.5 | llama.cpp | this port |
 |---|---|---|---|
-| text Edit ↓ | 0.035 | 0.0325 | **0.0328** |
-| reading-order Edit ↓ | 0.042 | 0.0414 | **0.0415** |
-| table TEDS ↑ | 92.76 | 92.45 | **92.75** |
-| formula CDM ↑ | 94.21 | 90.21 | **91.77** |
-| **Overall** ↑ | 94.50 | 93.14 | **93.75** |
+| text Edit ↓ | 0.035 | 0.0309 | **0.0322** |
+| reading-order Edit ↓ | 0.042 | 0.0413 | **0.0414** |
+| table TEDS ↑ | 92.76 | 92.52 | **92.82** |
+| formula CDM ↑ | 94.21 | 92.20 | **93.25** |
+| **Overall** ↑ | 94.50 | 93.87 | **94.28** |
 
-Accuracy is preserved against the reference on text, reading order and tables. The single gap is
-**formula CDM (−2.44)**, and it is the model's difficulty with CJK formulas rather than a defect in
-this port: llama.cpp — a wholly separate inference stack on the same checkpoint — reproduces the gap,
-and in fact scores *lower* (90.21). Methodology, per-category breakdown and speed:
-[docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+Accuracy is preserved against the reference on text, reading order and tables, and formula CDM is now
+within **0.96** of published (`Overall` −0.22). Getting there cost two fixes that were found by
+running the port's own output through its own guards, both of them **parity gaps against upstream, not
+model behaviour**: a repetition truncator (upstream's `truncate_repetitive_content`, which this port
+lacked) and `crop_margin` on formula crops (which upstream applies and this port did not).
 
-Every cell is the `page` reduction of the `subset: v1.5` slice, read from the scorer's result JSON in
-`bench/omnidocbench/results/`. `Overall` is the benchmark's own
-`((1 − text_Edit) × 100 + table_TEDS + formula_CDM) / 3`, applied identically to both measured columns.
+**The formula gap was ours far more than it was the model's, and this README used to say the opposite.**
+The earlier reading — "−2.44 CDM, and it is the model's CJK difficulty, not a defect in this port,
+because llama.cpp reproduces it" — was **wrong**, and wrong for a structural reason worth stating:
+llama.cpp re-recognizes *this pipeline's crop PNGs*, so it is an independent control on the **decode**
+path and a common-mode one on the **crop** path. It could never have detected a missing crop step.
+`crop_margin` recovered **1.48 of the 2.44** (91.77 → 93.25), and it helped CJK formulas *more* than
+English ones (+2.46 vs +1.11), which is precisely the evidence the old argument claimed to rule out.
+Full A/B, the CDM environment trap, and what remains: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
+Every cell is the `page` reduction of the `subset: v1.5` slice, from the official scorer. `Overall` is
+the benchmark's own `((1 − text_Edit) × 100 + table_TEDS + formula_CDM) / 3`, applied identically to
+both measured columns. The re-scored baseline reproduces the previously published figures of this table
+to 4 dp (CDM 0.9177, english 0.9349, simplified_chinese 0.8730), which is what makes the deltas
+trustworthy rather than a scoring-setup artifact.
 
 The shipped `OmniDocBench.json` is a 1651-page *superset* (it bundles 296 adversarial `*_hard` pages
 that are not on the leaderboard); scoring the superset instead gives the pessimistic text 0.0368 /
