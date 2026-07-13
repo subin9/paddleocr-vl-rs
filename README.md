@@ -87,6 +87,11 @@ is an inference (the leaderboard does not publish its page list) are in
   sample page (resampler drift only). See `tests/parity_layout.rs`.
 - Load-once recognition is gated on byte-identical output vs the per-page path (24 pages / 189 crops
   covering 22 of the 25 layout classes, **24/24 identical**) — a speed mode that changes a token is a bug.
+- Degenerate regions (the model loops and never emits EOS) are truncated on ingest by
+  `assemble::truncate_repetitive_content`, a port of upstream's own `truncate_repetitive_content`
+  with its per-class floors. PaddleOCR-VL decodes greedily with **no** repetition penalty — upstream's
+  predictor ignores the parameter outright — so this string guard, not the sampler, is where the
+  original stack handles it too. See [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md).
 
 ## Quick start
 

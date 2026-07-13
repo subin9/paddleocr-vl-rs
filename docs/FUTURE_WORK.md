@@ -49,18 +49,44 @@ needs a per-crop diff (dump both stacks' text for the same table/formula crops a
 diverge), not another aggregate score. Deliberately left **unattributed** in BENCHMARKS.md rather than
 hand-waved to "numeric noise".
 
-## Root-cause the runaway generation (why does a crop never emit EOS?)
+## Runaway generation — MITIGATED (upstream's truncator, ported); the port is exonerated on sampling
 
-**Why:** `magazine_TheEconomist.2023.12.02_page_062` reproducibly generated until it was killed —
-hours, pre-cap. It is now *bounded* (`MAX_NEW_TOKENS=2048` → the page completes in 45s, 6339 bytes)
-and the 120s per-region + 600s per-page guards catch the class in general, but **bounding is not
-explaining**: something about that region makes a 0.9B model refuse to stop, and 8 crops across the
-full run still hit the 120s guard and get **empty text** recorded (a small, real accuracy cost the
-port pays and llama.cpp — 0 trips — does not). **Hard part:** the interesting question is whether the
-degenerate loop reproduces in the *reference* transformers implementation on the same crop. If yes it
-is a model property (and the guard is the right answer forever); if no, it is a port bug in sampling
-or EOS handling and the guard is masking it. That single experiment is the whole task — do it before
-touching any generation code.
+`magazine_TheEconomist.2023.12.02_page_062` reproducibly generated until it was killed — hours,
+pre-cap. It was already *bounded* (`MAX_NEW_TOKENS=2048`, plus the 120s per-region / 600s per-page
+guards), but bounding is not explaining, and the open question was whether a crop that never emits
+EOS is a **model property** (guard is the right answer forever) or a **port bug in sampling/EOS**
+(guard is masking it).
+
+**It is a model property, and the original codebase says so by what it does.** PaddleOCR-VL ships a
+`generation_config.json` carrying nothing but `eos_token_id`/`pad_token_id` — no penalties, no
+sampling — and PaddleX's local predictor *explicitly warns-and-ignores* `repetition_penalty` /
+`temperature` / `top_p` ("not supported by the local model"). Upstream decodes greedily with no
+repetition guard in the sampler at all. Its entire defence is (1) a per-region token cap and (2)
+`truncate_repetitive_content` (`paddlex/inference/pipelines/paddleocr_vl/uilts.py`), a *string*
+truncator run on every decoded region after the fact. There is no retry, no fallback, no n-gram
+constraint anywhere in the stack; the maintainers' stated remedy for hallucinated runaway is "use the
+full layout pipeline, not the VLM standalone".
+
+That settles the sampling half of the question: **this port's decode already matches upstream's
+exactly** (greedy, unpenalized, capped), so a sampling divergence cannot be the cause. It also means
+the port was missing a piece upstream has — now ported: `assemble::truncate_repetitive_content`,
+applied per class in `read_results` (text floor 50 chars, table floor 5000, upstream's own two
+values). `results.json` deliberately keeps the raw string; the guard runs on ingest.
+
+Measured, on 8,636 Korean AI-Hub crops through this engine: **2 crops** ran to the cap
+(`\(f_{0}f_{0}…`, `川川川…`) and produced **51% of the whole slice's edit distance**. Both are cut by
+the ported truncator. It is a known failure of the model *family*, not of this one — Nougat reports
+it on 1.5% of pages ("non-Latin script languages result in instant repetitions"), olmOCR calls it
+"the most common failure we experience", and the two vLLM PRs proposing a loop detector for
+PaddleOCR-VL were closed unmerged.
+
+**Still open (small):** the truncator cannot help the ~8 crops that trip the 120s region guard and
+record **empty text** — they never return a string to truncate. And the definitive per-crop A/B (does
+the *reference* transformers implementation loop on `page_062`'s crop?) was never run; the evidence
+above narrows it to the model but does not close it by direct observation. Worth one run before any
+in-flight detector (Nougat's logit-variance `StoppingCriteriaScores` is the design to copy if it ever
+becomes necessary — it stops the loop without distorting honest tokens, which a repetition penalty
+does).
 
 ## DONE — Skip visual-only regions in assembly (`VISUAL_ONLY_CLASSES`, measured)
 

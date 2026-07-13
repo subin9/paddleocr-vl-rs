@@ -7,6 +7,8 @@
 //! Keeping this VLM-free keeps the crate independent of any inference engine: the two stages talk
 //! only through the manifest.json / results.json contract.
 
+use std::collections::HashMap;
+
 use crate::Region;
 use image::RgbImage;
 
@@ -298,17 +300,122 @@ pub fn manifest_json(tasks: &[RegionTask]) -> String {
     format!("[\n{}\n]\n", rows.join(",\n"))
 }
 
+/// Length below which a decoded region is never inspected for repetition. A table legitimately
+/// repeats its cell markup, so it gets a far higher bar than prose -- upstream's own two values
+/// (`pipeline.py`: `min_count = 5000 if block_label == "table" else 50`).
+const REPEAT_FLOOR_TABLE: usize = 5000;
+const REPEAT_FLOOR_TEXT: usize = 50;
+
+/// The longest tail unit of at least `min_len` chars that repeats at least `min_repeats` times at
+/// the end of `s`. Returns the prefix before the repetition and how many chars the repetition ate.
+fn repeating_suffix(s: &[char], min_len: usize, min_repeats: usize) -> Option<(&[char], usize)> {
+    for unit_len in (min_len..=s.len() / min_repeats).rev() {
+        let unit = &s[s.len() - unit_len..];
+        let mut start = s.len();
+        while start >= unit_len && &s[start - unit_len..start] == unit {
+            start -= unit_len;
+        }
+        let repeated = s.len() - start;
+        if repeated / unit_len >= min_repeats {
+            return Some((&s[..start], repeated));
+        }
+    }
+    None
+}
+
+/// The shortest unit that tiles `s` exactly (`abab` -> `ab`), or `None` if `s` is not periodic.
+fn shortest_repeating_unit(s: &[char]) -> Option<&[char]> {
+    (1..=s.len() / 2)
+        .filter(|unit_len| s.len() % unit_len == 0)
+        .find(|&unit_len| s.chunks(unit_len).all(|c| c == &s[..unit_len]))
+        .map(|unit_len| &s[..unit_len])
+}
+
+/// Collapse a degenerate region string, the way PaddleOCR-VL upstream does before a region's text
+/// enters the document (`PaddleX paddlex/inference/pipelines/paddleocr_vl/uilts.py`,
+/// `truncate_repetitive_content`, called from `pipeline.py` on EVERY recognized block).
+///
+/// The model decodes greedily with no repetition penalty -- upstream's local predictor explicitly
+/// warns-and-ignores `repetition_penalty` / `temperature` / `top_p`, and the shipped
+/// `generation_config.json` sets none -- so a region that degenerates never emits EOS and runs to
+/// the token cap. There is no sampler-level guard anywhere in the original stack; the whole defence
+/// is this after-the-fact truncation plus a per-region cap. Repetition on out-of-domain crops is a
+/// known, unfixed failure of the model family (Nougat measures 1.5% of pages, PaddleOCR-VL carries
+/// open issues, and the vLLM loop-detector PRs were closed unmerged), so the string guard is the
+/// mechanism, not a stopgap.
+///
+/// Three checks, in upstream's priority order: a long single line whose tail is one unit repeated
+/// over more than half its length; a line that is one short unit tiled ten times or more; and a
+/// block whose lines are 80% the same line. Everything shorter than `min_count` is returned
+/// untouched -- see [`REPEAT_FLOOR_TABLE`] / [`REPEAT_FLOOR_TEXT`].
+pub fn truncate_repetitive_content(content: &str, min_count: usize) -> String {
+    let s: Vec<char> = content.trim().chars().collect();
+    if content.chars().count() < min_count || s.is_empty() {
+        return content.to_string();
+    }
+
+    if !s.contains(&'\n') {
+        // Phrase-level: '\(f_{0}f_{0}f_{0}...' -- a real crop that ran to the cap.
+        if s.len() > 100 {
+            if let Some((prefix, repeated)) = repeating_suffix(&s, 8, 5) {
+                if 2 * repeated > s.len() {
+                    return prefix.iter().collect();
+                }
+            }
+        }
+        // Character-level: the whole line is one unit tiled -- '川川川川...', 'ababab...'.
+        if s.len() > 10 {
+            if let Some(unit) = shortest_repeating_unit(&s) {
+                if s.len() / unit.len() >= 10 {
+                    return unit.iter().collect();
+                }
+            }
+        }
+    }
+
+    // Line-level: the same line emitted over and over.
+    let lines: Vec<&str> = content
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.len() >= 10 {
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        for line in &lines {
+            *counts.entry(line).or_default() += 1;
+        }
+        if let Some((line, count)) = counts.into_iter().max_by_key(|&(_, n)| n) {
+            if count >= 10 && 5 * count >= 4 * lines.len() {
+                return line.to_string();
+            }
+        }
+    }
+
+    content.to_string()
+}
+
 /// Parse the recognition stage's `results.json` (shape `[{read_order, class, text}]`) into
 /// `(class, text)` blocks sorted by `read_order` -- the input [`assemble_markdown`] expects.
 /// `text` carries arbitrary VLM output (escaped `\n`/`"`/`\`), so this uses a real JSON parser.
 /// Rows missing `class`/`text` are skipped; a missing `read_order` sorts first.
+///
+/// This is where a runaway region is cut back to size ([`truncate_repetitive_content`]). It is done
+/// on ingest, not in the recognition stage: `results.json` stays a faithful record of what the
+/// model actually emitted -- which is how the runaway was diagnosed in the first place -- and every
+/// consumer of that contract passes through here.
 pub fn read_results(json: &str) -> serde_json::Result<Vec<(String, String)>> {
     let mut rows: Vec<(i64, String, String)> =
         serde_json::from_str::<Vec<serde_json::Value>>(json)?
             .into_iter()
             .filter_map(|v| {
                 let class = v.get("class")?.as_str()?.to_string();
-                let text = v.get("text")?.as_str()?.to_string();
+                let text = v.get("text")?.as_str()?;
+                let floor = if class == "table" {
+                    REPEAT_FLOOR_TABLE
+                } else {
+                    REPEAT_FLOOR_TEXT
+                };
+                let text = truncate_repetitive_content(text, floor);
                 let read_order = v.get("read_order").and_then(|o| o.as_i64()).unwrap_or(0);
                 Some((read_order, class, text))
             })
@@ -482,6 +589,63 @@ mod tests {
             assemble_markdown(&blocks),
             "# Title\n\na said \"hi\"\nnext line"
         );
+    }
+
+    #[test]
+    fn truncate_cuts_the_two_runaways_actually_observed() {
+        // Both are real predictions from the AI-Hub Korean slice: a degraded word crop the model
+        // decoded until it hit the token cap, EOS never coming. Between them they carried 51% of
+        // that slice's entire edit distance, out of 8,636 crops.
+        let latex = format!("\\({}", "f_{0}".repeat(512)); // GT was '발아야'
+        let cut = truncate_repetitive_content(&latex, REPEAT_FLOOR_TEXT);
+        assert!(cut.chars().count() < 20, "still runaway: {cut:?}");
+
+        let cjk = "川".repeat(2048); // GT was '개반제한구역내'
+        let cut = truncate_repetitive_content(&cjk, REPEAT_FLOOR_TEXT);
+        assert!(cut.chars().count() < 20, "still runaway: {cut:?}");
+
+        // A line repeated to death collapses to the one line.
+        let lines = "표 1. 계속\n".repeat(40);
+        assert_eq!(
+            truncate_repetitive_content(&lines, REPEAT_FLOOR_TEXT),
+            "표 1. 계속"
+        );
+    }
+
+    #[test]
+    fn truncate_leaves_honest_output_alone() {
+        // Long prose with no repetition: untouched, byte for byte.
+        let prose = "국토의 계획 및 이용에 관한 법률 제56조에 따라 개발행위허가를 받아야 하는 \
+                     경우에는 그 허가를 받은 것으로 본다.";
+        assert!(prose.chars().count() > REPEAT_FLOOR_TEXT);
+        assert_eq!(truncate_repetitive_content(prose, REPEAT_FLOOR_TEXT), prose);
+
+        // Short output is never even inspected -- the LaTeX a small crop drifts into is wrong, but
+        // it is not repetition, and this guard must not pretend to fix it.
+        let drift = "\\( \\frac{1}{2} \\)";
+        assert_eq!(truncate_repetitive_content(drift, REPEAT_FLOOR_TEXT), drift);
+
+        // A table repeats its cell markup by construction: it must clear the far higher floor.
+        let table = "<fcel>1<fcel>2<nl>".repeat(100);
+        assert!(table.chars().count() > REPEAT_FLOOR_TEXT);
+        assert_eq!(
+            truncate_repetitive_content(&table, REPEAT_FLOOR_TABLE),
+            table
+        );
+    }
+
+    #[test]
+    fn read_results_truncates_by_class() {
+        // Same degenerate string on a text block and a table block: cut in the first, kept in the
+        // second. This is the class-dependent floor, and it is what stops the guard eating tables.
+        let runaway = "川".repeat(2048);
+        let json = format!(
+            r#"[{{"read_order": 1, "class": "text",  "text": "{runaway}"}},
+                {{"read_order": 2, "class": "table", "text": "{runaway}"}}]"#
+        );
+        let blocks = read_results(&json).unwrap();
+        assert!(blocks[0].1.chars().count() < 20);
+        assert_eq!(blocks[1].1.chars().count(), 2048);
     }
 
     #[test]
