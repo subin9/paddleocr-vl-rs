@@ -1222,6 +1222,57 @@ doc marks it as such.
 The transformers reference was **not** run over the full page set (only the single-crop latency
 microbenchmarks earlier in this doc). Stated as a gap rather than estimated.
 
+# ISQ Q4K quantization: near-lossless recognition, a small table-structure cost
+
+A separate question from the cross-stack one: the port runs bf16 weights, but mistral.rs can quantize
+them at load with ISQ (in-situ quantization). Does 4-bit ISQ (Q4K) preserve OCR accuracy? Scored on
+the 150-page stratified subset, official scorer (pin `59b103c`, `quick_match`, `page_avg`), a clean
+**2×2**: {bf16, ISQ-Q4K} × {with, without the OTSL detok fix}. Recognition is the only variable inside
+each precision pair; the detok fix is a pure rendering change (it only affects how OTSL table tokens
+are emitted). Configs `data/subsets/subset150_{bf16fix,isqfix,bf16rework,isq}.end2end.yaml`; scores in
+the matching `results/*_quick_match_metric_result.json`.
+
+**The like-for-like pair — both with the detok fix, so tables render — `subset: v1.5`:**
+
+| metric (page_avg) | bf16 (`bf16fix`) | ISQ-Q4K (`isqfix`) | Δ (ISQ − bf16) |
+|---|---|---|---|
+| text Edit ↓ | 0.0321 | **0.0302** | −0.0019 |
+| reading-order Edit ↓ | 0.0604 | **0.0604** | 0.0000 |
+| formula Edit ↓ (proxy, **not** CDM) | 0.1796 | **0.1676** | −0.0120 |
+| table TEDS ↑ | **0.9397** | 0.9306 | **−0.0091** |
+| table TEDS-S ↑ | **0.9754** | 0.9720 | −0.0034 |
+| table Edit ↓ | **0.0355** | 0.0435 | +0.0080 |
+
+**Verdict: near-lossless on recognition, with the one real cost isolated to table structure.** Text,
+reading-order and formula move *toward better or flat* under 4-bit quantization — which is the
+signature of run-to-run noise on 150 pages, not a real gain (4-bit rounding cannot genuinely out-read
+bf16). Yet the quantization is doing real work: **116 of the 150 predictions differ** from the bf16
+arm, so Q4K changes the exact tokens on 77% of pages while leaving the edit-distance and reading-order
+aggregates intact. The one directionally-consistent regression is **table structure — TEDS −0.0091 and
+table-Edit +0.0080 both worse** — which is the expected place for quantization to bite: OTSL is a
+structured token sequence with span markers (`<lcel>`/`<ucel>`), more sensitive to weight rounding than
+free text. It is small (0.9 TEDS points) but not noise, because both table metrics agree on it.
+
+The language split is consistent with "noise, not degradation": English text 0.0233 → 0.0208 and CJK
+formula-edit 0.1595 → 0.1387 both *improve* under Q4K while CJK text barely moves (0.0488 → 0.0492) —
+scatter around zero, not a systematic loss on either language.
+
+**The table-collapse confound, ruled out.** The two `*rework`/`isq` arms are the *same* two precisions
+run **without** the detok fix, and both collapse to **table TEDS 0.0** (`bf16rework` and `isq` alike),
+while their text/formula/reading-order are bit-for-bit their `*fix` counterparts (the detok fix is
+table-only: `bf16rework` text 0.0321 = `bf16fix` 0.0321; `isq` formula 0.1676 = `isqfix` 0.1676). So a
+raw ISQ run's broken tables are the **missing OTSL detok fix ([mistral.rs #2319](https://github.com/EricLBuehler/mistral.rs/pull/2319)),
+not the quantization** — with the fix, ISQ tables recover to 0.9306. Anyone who sees ISQ score TEDS 0.0
+and blames 4-bit is reading the same artifact the bf16 control also shows.
+
+**Reproducibility caveat, stated plainly.** Unlike the GGUF cross-stack run — whose bf16 precision was
+read out of the file header — the ISQ recognition here was produced by an **out-of-tree** recognize
+binary; the `examples/recognize.rs` committed in this repo carries no ISQ flag, and no committed log
+records the quant tier. The `Q4K` label is from the run configuration, not re-derivable from this tree.
+What is committed and reproducible is the **scoring**: the four prediction sets scored deterministically
+by the pinned official scorer into the result JSONs above. This section is therefore a recorded
+measurement, not a from-this-repo reproduction like the others, and is marked as such.
+
 ## Caveats
 
 - Different stacks (candle/mistral.rs vs PyTorch/transformers): kernels, memory layout, no quant.
