@@ -94,6 +94,15 @@ both measured columns. The re-scored baseline reproduces the previously publishe
 to 4 dp (CDM 0.9177, english 0.9349, simplified_chinese 0.8730), which is what makes the deltas
 trustworthy rather than a scoring-setup artifact.
 
+**These headline numbers were assembled by splicing per-fix A/B deltas onto one scored run** — the
+repetition guard re-assembled in place, the `crop_margin` formula crops re-recognized and spliced back.
+A single clean run of all four fixes from the start (`full1651_allfix`, config
+`bench/omnidocbench/data/subsets/full1651_allfix.end2end.yaml`) reproduces them end-to-end: on
+`subset: v1.5`, text-edit **0.0322** (identical to the splice), table TEDS **92.99**, reading-order
+**0.0410**, formula-edit **0.1692** — table and reading order land marginally *better* clean than
+spliced, none worse. (CDM is not in that run; it needs the separate CDM environment, so the **93.25**
+above stands from the `crop_margin` CDM A/B.) Full detail: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
 The shipped `OmniDocBench.json` is a 1651-page *superset* (it bundles 296 adversarial `*_hard` pages
 that are not on the leaderboard); scoring the superset instead gives the pessimistic text 0.0368 /
 TEDS 90.36 / RO 0.0434. Both columns, the evidence for the 1355-page reading, and the caveat that it

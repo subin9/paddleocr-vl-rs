@@ -253,6 +253,34 @@ Note also that the scorer's `CDM_plain` metric does **not** compute CDM — it o
 formula pairs to `result/<name>_display_formula_formula.json` for an external CDM pass. A config with
 `CDM_plain` enabled produces no CDM column, which is easy to misread as "CDM ran and found nothing".
 
+## All fixes, one clean run — the spliced headline confirmed end-to-end
+
+Every number in the headline was **assembled by splicing** per-fix A/B deltas onto a single scored run:
+the repetition guard was re-assembled in place (no VLM re-run), and `crop_margin` re-recognized only the
+1,685 formula crops and spliced them back. That is legitimate — each fix touches a disjoint slice of the
+output — but it is not the same object as running the whole pipeline once with everything on. So the
+1651 pages were re-run **once, clean**, with all four fixes applied from the start: `ref_postprocess`
+layout, OTSL→HTML tables, the repetition guard, and `crop_margin`. No splicing, no re-assembly.
+
+| `subset: v1.5` | spliced headline (`+guard+crop_margin`) | **`full1651_allfix` (one clean run)** |
+|---|---|---|
+| text Edit ↓ | 0.0322 | **0.0322** |
+| table TEDS ↑ | 0.9282 | **0.9299** |
+| table Edit ↓ | 0.0556 | **0.0548** |
+| reading-order Edit ↓ | 0.0414 | **0.0410** |
+| formula Edit ↓ (proxy, **not** CDM) | 0.1697 | **0.1692** |
+
+(TEDS-S is not broken out in the spliced final table above, so it is not compared here; the clean run's
+`subset: v1.5` TEDS-S is **0.9596**.)
+
+Text-edit is **identical**; table and reading-order land **marginally better** run clean than spliced,
+and nothing is worse. So the spliced deltas were not hiding a cross-fix interaction — the fixes compose,
+and the headline is what a single honest run produces. Evidence:
+`results/full1651_allfix_quick_match_metric_result.json`, config
+`data/subsets/full1651_allfix.end2end.yaml`. **CDM is not in this run** (it needs the separate CDM
+environment); formula is the `Edit_dist` proxy here, and the headline's **93.25 CDM** stands from the
+`crop_margin` CDM A/B above, whose baseline reproduces the published figures to 4 dp.
+
 ## Methodology (recorded before any run)
 
 **Benchmark.** OmniDocBench — [opendatalab/OmniDocBench](https://github.com/opendatalab/OmniDocBench)
@@ -1211,3 +1239,24 @@ microbenchmarks earlier in this doc). Stated as a gap rather than estimated.
 - Decode tok/s is computed identically for both engines (`(tokens-1)/(total-ttft)`), not from each
   engine's self-report.
 - Short-output decode (6 tokens) has wide error bars; p90 over 20 iters bounds it.
+
+## Reproduction scripts
+
+The zero-GPU analyses above each read the recognition stage's own `results.json` and the scorer's own
+per-sample output — no re-run, no re-score — so every number is reproducible from committed inputs. The
+generators, all under `bench/omnidocbench/`:
+
+| script | backs which section | what it produces |
+|---|---|---|
+| `sample_stratified.py` | Stratified subset (n=150) | the deterministic `subset150.txt` stem list (no RNG) |
+| `error_budget.py` | REF_LAYOUT / per-category | exact layout-vs-recognition split of text-edit (layout 53.4%, in-crop subst. 8.1%) |
+| `layout_probe.py` | REF_LAYOUT | the ours/raw/pipeline 3-box probe that attributes the gap to omitted post-processing |
+| `filter_nested.py` | nested sub-region dedup | causal A/B of the parent/child duplication via the real assembler |
+| `dump_nested_parity.py` | `tests/parity_nested.rs` | per-page boxes + classes + Python kept-set (39,427 regions / 7,125 drops) |
+| `spotcheck_layout_onnx.py` | nested dedup | ONNX-determinism check that today's binary emits the logged boxes |
+| `dump_otsl_parity.py` | `tests/otsl_html_parity.rs` | the OTSL→HTML fixture from PaddleX (739 tables / 256 with spans) |
+| `analyze_visual_drop.py` | plumbing / visual-only skip | correlational check on how much text the skip drops |
+| `cdm_nest_ab.py` | formula CDM (nesting artifact) | A/B isolating the scorer's `\[`-in-`\begin{array}` nesting (+0.0022, harmless) |
+
+Fixture dumpers write into gitignored `work/` (their inputs are model output over dataset pages, which
+is research-use-only and never committed), so the Rust parity tests skip when the fixture is absent.
