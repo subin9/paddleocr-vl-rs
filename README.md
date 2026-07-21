@@ -130,6 +130,34 @@ is an inference (the leaderboard does not publish its page list) are in
   (0.1817 → **0.1697**) — and −5.6% on llama.cpp over the same crops, which is the cross-stack
   signature of a crop-path fix rather than a port bug.
 
+### 4-bit ISQ quantization is near-lossless
+
+mistral.rs can quantize the weights at load (ISQ). Scored on the 150-page stratified subset with the
+official scorer, bf16 vs **ISQ-Q4K**, both arms carrying the OTSL detok fix so tables render
+(`subset: v1.5`, `page_avg`):
+
+| metric | bf16 | ISQ-Q4K | Δ |
+|---|---|---|---|
+| text Edit ↓ | 0.0321 | **0.0302** | −0.0019 |
+| reading-order Edit ↓ | 0.0604 | **0.0604** | 0.0000 |
+| formula Edit ↓ (proxy, not CDM) | 0.1796 | **0.1676** | −0.0120 |
+| table TEDS ↑ | **0.9397** | 0.9306 | **−0.0091** |
+| table TEDS-S ↑ | **0.9754** | 0.9720 | −0.0034 |
+
+Text, reading order and formula move *toward better or flat* under 4-bit — the signature of
+run-to-run noise, not a real gain, since 4-bit rounding cannot out-read bf16. The quantization is
+nonetheless doing real work: **116 of 150 predictions differ** from the bf16 arm, so Q4K changes the
+exact tokens on 77% of pages while leaving the aggregates intact. The one directionally-consistent
+cost is **table structure** (TEDS −0.0091 *and* table Edit +0.0080, both worse) — OTSL is a structured
+token sequence with span markers, more sensitive to weight rounding than free text.
+
+A raw ISQ run's *collapsed* tables (TEDS 0.0) are **not** the quantization: the bf16 control run
+without the detok fix collapses identically, so that is [mistral.rs #2319](https://github.com/EricLBuehler/mistral.rs/pull/2319)
+missing, not 4-bit. **Caveat:** recognition for these arms was an out-of-tree run — the committed
+`examples/recognize.rs` carries no ISQ flag — so unlike the rest of this section it is a *recorded
+measurement*, not reproducible from this tree. The scoring is: see
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
 ## Quick start
 
 Prerequisites (the pipeline itself is Python-free at inference; you still need the artifacts):
