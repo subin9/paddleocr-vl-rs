@@ -1,4 +1,8 @@
-//! PaddleOCR-VL-1.5 recognition stage -- the glue that links mistral.rs.
+//! PaddleOCR-VL recognition stage (1.5 or 1.6) -- the glue that links mistral.rs.
+//!
+//! 1.6 is a weights-only release: byte-identical `config.json`, tokenizer and preprocessing, and an
+//! identical 620-tensor safetensors signature, so it loads through this same path with no code
+//! change. Point `PADDLEOCR_VL_WEIGHTS` at either checkout. See the README.
 //!
 //! Reads the layout stage's `manifest.json` + crop PNGs (produced by the `paddleocr-layout` bin in
 //! this repo), builds ONE mistral.rs engine on the local checkpoint (it auto-detects

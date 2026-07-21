@@ -166,7 +166,8 @@ Prerequisites (the pipeline itself is Python-free at inference; you still need t
    `export ORT_DYLIB_PATH=/path/to/libonnxruntime.so` (e.g. from a `pip install onnxruntime`).
 2. **PP-DocLayoutV3 ONNX graph** (the layout model). Export its path:
    `export PADDLEOCR_LAYOUT_MODEL=/path/to/PP-DocLayoutV3.onnx`.
-3. **PaddleOCR-VL-1.5 checkpoint** (the recognition weights) from Hugging Face.
+3. **PaddleOCR-VL-1.5 or -1.6 checkpoint** (the recognition weights) from Hugging Face. Either works
+   unchanged — see [Checkpoint versions](#checkpoint-versions-15-and-16-are-interchangeable).
 4. **poppler-utils** for `pdftoppm` if you start from PDFs.
 
 Build the layout binary (standalone, no GPU/engine deps):
@@ -205,6 +206,34 @@ PADDLEOCR_VL_GPU=1 PADDLEOCR_VL_WEIGHTS=/path/to/PaddleOCR-VL-1.5 recognize out/
 # Many pages: load the ~1.9GB checkpoint once, not once per page.
 PADDLEOCR_VL_GPU=1 PADDLEOCR_VL_WEIGHTS=... recognize --list pages.txt   # one page dir per line
 ```
+
+### Checkpoint versions: 1.5 and 1.6 are interchangeable
+
+**PaddleOCR-VL-1.6 is a weights-only release and runs on this port with no code change and no
+rebuild** — point `PADDLEOCR_VL_WEIGHTS` at a 1.6 checkout and it loads. Verified against the
+published 1.5, rather than assumed from the version number:
+
+| artifact | 1.5 vs 1.6 |
+|---|---|
+| `config.json` | **byte-identical** |
+| `tokenizer.json` / `tokenizer.model` | **byte-identical** (sha256) |
+| `modeling_/configuration_/processing_/image_processing_*.py` | byte-identical |
+| `preprocessor_config` / `generation_config` / `added_tokens` / `chat_template` | byte-identical |
+| `model.safetensors` tensor signature | **620 tensors, identical names, shapes and dtypes** |
+| `model.safetensors` content | differs (this is the release) |
+| `inference.yml` | one string: `model_name: …-1.5-0.9B` → `…-1.6-0.9B` |
+
+The tensor signature was read out of the safetensors header (an HTTP range request for the header
+bytes, not a 1.9 GB download), and the downloaded checkpoint was confirmed by content hash
+(`85a479d5…`), not by filename — the same rule this repo applies to the GGUF.
+
+Smoke-tested end to end: the existing binary, unmodified, loaded 1.6 and recognized a 6-region page
+(CPU-f32, greedy). Against 1.5 on the identical crops, **4 of 6 regions are token-identical**; one
+differs by a dash glyph, and one is a `image`-class crop where 1.5 runs away into a `☐ ☑` loop (the
+case the repetition guard exists for) while 1.6 terminates cleanly. **That is a smoke test, not an
+accuracy claim** — n=1 page, and `image` is a visual-only class assembly drops before scoring. No
+OmniDocBench run has been scored on 1.6, so every benchmark number in this repo remains a **1.5**
+number.
 
 Reassemble the reading-order markdown:
 
